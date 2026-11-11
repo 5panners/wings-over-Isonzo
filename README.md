@@ -67,6 +67,10 @@ Gamepads, joysticks, throttles and rudder pedals work alongside the keyboard. Op
 
 Settings are saved in the browser.
 
+### Finding other aircraft
+
+Aircraft in view carry a marker with name and distance: a diamond for enemies, a ring for friends. Aircraft out of view are shown by arrows on a ring round the centre of the screen, pointing the way to turn; enemy arrows are red, larger when closer, and show the distance.
+
 ### Handling
 
 The flight model and chase camera come from Home Skies 1917:

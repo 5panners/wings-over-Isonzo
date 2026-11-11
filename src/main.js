@@ -324,7 +324,20 @@ function drawHud(t) {
   for (const p of planes.values()) {
     if (p === me || !p.alive) continue;
     const d = p.pos.distanceTo(me.pos); if (d > 900) continue;
-    const s = proj(p.pos); if (!s) continue;
+    const s = proj(p.pos);
+    if (!s || s[0] < 0 || s[0] > W || s[1] < 0 || s[1] > Hh) {
+      // out of view: an arrow on a ring round the screen centre points toward the aircraft
+      if (me.dying) continue;
+      V.copy(p.pos).applyMatrix4(camera.matrixWorldInverse);                  // camera space: x right, y up, -z ahead
+      const a = Math.atan2(-V.y, V.x), R = Math.min(W, Hh) * 0.4, ax = W / 2 + Math.cos(a) * R, ay = Hh / 2 + Math.sin(a) * R;
+      const foe = p.team !== me.team, size = (foe ? 15 : 11) * (1.25 - 0.5 * Math.min(1, d / 900));   // nearer aircraft get bigger arrows
+      ctx.save(); ctx.translate(ax, ay); ctx.rotate(a); ctx.globalAlpha = foe ? 0.95 : 0.7;
+      ctx.fillStyle = TEAM_COLOR[p.team]; ctx.strokeStyle = 'rgba(0,0,0,.65)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(size, 0); ctx.lineTo(-size * 0.7, size * 0.62); ctx.lineTo(-size * 0.3, 0); ctx.lineTo(-size * 0.7, -size * 0.62); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.restore();
+      if (foe) { ctx.fillStyle = '#fff'; ctx.shadowColor = '#000'; ctx.shadowBlur = 4; ctx.fillText(`${Math.round(d)} m`, ax - Math.cos(a) * 28, ay - Math.sin(a) * 28 + 4); ctx.shadowBlur = 0; }
+      continue;
+    }
     const foe = p.team !== me.team; ctx.strokeStyle = ctx.fillStyle = TEAM_COLOR[p.team]; ctx.lineWidth = 2;
     ctx.beginPath(); if (foe) { ctx.moveTo(s[0], s[1] - 9); ctx.lineTo(s[0] + 9, s[1]); ctx.lineTo(s[0], s[1] + 9); ctx.lineTo(s[0] - 9, s[1]); ctx.closePath(); } else ctx.arc(s[0], s[1], 8, 0, 6.3);
     ctx.stroke();
