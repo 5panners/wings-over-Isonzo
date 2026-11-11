@@ -311,7 +311,7 @@ function drawHud(t) {
     const foe = p.team !== me.team; ctx.strokeStyle = ctx.fillStyle = TEAM_COLOR[p.team]; ctx.lineWidth = 2;
     ctx.beginPath(); if (foe) { ctx.moveTo(s[0], s[1] - 9); ctx.lineTo(s[0] + 9, s[1]); ctx.lineTo(s[0], s[1] + 9); ctx.lineTo(s[0] - 9, s[1]); ctx.closePath(); } else ctx.arc(s[0], s[1], 8, 0, 6.3);
     ctx.stroke();
-    ctx.fillStyle = '#fff'; ctx.shadowColor = '#000'; ctx.shadowBlur = 4; ctx.fillText(`${p.name}  ${Math.round(d * 10)} m`, s[0], s[1] - 15); ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff'; ctx.shadowColor = '#000'; ctx.shadowBlur = 4; ctx.fillText(`${p.name}  ${Math.round(d)} m`, s[0], s[1] - 15);   // one unit = one metre at aircraft scale, the same scale the airspeed uses ctx.shadowBlur = 0;
   }
   if (me.alive) {                                              // gunsight
     const s = proj(V2.copy(me.pos).addScaledVector(me.fwd, 190));
