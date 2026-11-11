@@ -48,6 +48,7 @@ function explode(pos) { boomSound(pos.distanceTo(camera.position)); for (let i =
 // ---------------- game state ----------------
 const planes = new Map();
 const score = { it: 0, ah: 0 };
+let onRunway = false;      // start (and restart) on the runway instead of in the air; the host's choice also applies to its bots
 let me = null, net = null, teamSize = 4, roundEndAt = 0, nextSend = 0, nextBotCheck = 0, running = false, oobSince = 0;
 const feed = [];
 const isHost = () => !net || [net.id, ...net.peers].sort()[0] === net.id;
@@ -61,7 +62,7 @@ const label = id => { const p = planes.get(id); return p ? `<b style="color:${TE
 
 function onKill(victimId, killerId, collidedWith) {
   const v = planes.get(victimId); if (!v) return;
-  say(collidedWith ? `${label(victimId)} collided with ${label(collidedWith)}` : killerId && planes.has(killerId) ? `${label(killerId)} shot down ${label(victimId)}` : `${label(victimId)} crashed`);
+  say(collidedWith === 'balloon' ? `${label(victimId)} flew into a balloon` : collidedWith ? `${label(victimId)} collided with ${label(collidedWith)}` : killerId && planes.has(killerId) ? `${label(killerId)} shot down ${label(victimId)}` : `${label(victimId)} crashed`);
   if (isHost() && !roundEndAt) { score[other(v.team)]++; if (score[other(v.team)] >= SCORE_LIMIT) roundEndAt = now() + 8; }
 }
 // The functions below are only ever called by the peer that owns p.
@@ -183,11 +184,11 @@ function step(t, dt) {
       if (p === me) msgs.forEach(say);
       if (why) goDown(p, null, why);
       const crash = p === me ? flyPlayer(p, readInput(), dt) : flyBot(p, planes, t, dt);
-      if (crash) die(p, null);
-      else if (t - p.spawnedAt > 3 && !p.dying) {                           // mid-air collision: each owner destroys its own aircraft
-        for (const o of planes.values()) if (o !== p && o.alive && t - (o.spawnedAt || 0) > 3 && o.pos.distanceToSquared(p.pos) < COLLIDE_RADIUS * COLLIDE_RADIUS) { die(p, null, o.id); if (o.local) die(o, null, p.id); break; }
+      if (crash) die(p, null, crash === 'balloon' ? 'balloon' : undefined);
+      else if (t - p.spawnedAt > 3 && !p.dying && !p.onGround) {                           // mid-air collision: each owner destroys its own aircraft
+        for (const o of planes.values()) if (o !== p && o.alive && !o.onGround && t - (o.spawnedAt || 0) > 3 && o.pos.distanceToSquared(p.pos) < COLLIDE_RADIUS * COLLIDE_RADIUS) { die(p, null, o.id); if (o.local) die(o, null, p.id); break; }
       }
-    } else if (t > p.respawnAt && !roundEndAt) p.spawn(t);
+    } else if (t > p.respawnAt && !roundEndAt) p.spawn(t, onRunway);
     // guns: real bullets for planes we own, cosmetic tracers for everyone else
     if (p.alive && p.firing && t >= p.gunAt) {
       p.gunAt = t + GUN.interval;
@@ -298,6 +299,7 @@ function drawHud(t) {
   const over = Math.max(score.it, score.ah) >= SCORE_LIMIT;
   $('msg').innerHTML = over ? `${score.it > score.ah ? 'Italy' : 'Austria-Hungary'} wins the round<small>next round starting…</small>`
     : me.alive && me.dying ? 'Going down<small>out of control</small>'
+    : me.alive && me.onGround ? (me.throttle < 0.5 ? 'On the runway<small>open the throttle (Shift)</small>' : me.speed > TYPES[me.type].stall * 1.1 ? 'Flying speed<small>ease the stick back</small>' : '')
     : me.alive && me.fire ? 'On fire<small>dive hard to blow it out</small>'
     : !me.alive ? `Shot down<small>back in the air in ${Math.max(0, Math.ceil(me.respawnAt - t))} s</small>`
     : oobSince ? 'Turn back<small>you are leaving the combat area</small>'
@@ -307,13 +309,14 @@ function drawHud(t) {
 
 // ---------------- lobby ----------------
 const params = new URLSearchParams(location.search);
-for (const [id, key] of [['name', 'name'], ['pw', 'pw'], ['team', 'team'], ['size', 'size'], ['relay', 'relay'], ['time', 'time'], ['clock', 'clock'], ['bots', 'bots']]) if (params.get(key)) $(id).value = params.get(key);
+for (const [id, key] of [['name', 'name'], ['pw', 'pw'], ['team', 'team'], ['size', 'size'], ['relay', 'relay'], ['time', 'time'], ['clock', 'clock'], ['bots', 'bots'], ['startpos', 'start']]) if (params.get(key)) $(id).value = params.get(key);
 if (!$('name').value) $('name').value = localStorage.getItem('woi-name') || 'Pilot ' + Math.floor(100 + Math.random() * 900);
 
 async function start() {
   startSound();
   const name = $('name').value.trim().slice(0, 20) || 'Pilot', password = $('pw').value, relay = $('relay').value.trim();
   teamSize = THREE.MathUtils.clamp(+$('size').value || 4, 1, MAX_PER_TEAM);
+  onRunway = $('startpos').value === 'runway';
   botSettings.level = THREE.MathUtils.clamp(+$('bots').value | 0, -1, BOT_LEVELS.length - 1);
   sky.tod = +$('time').value || 0; sky.rate = +$('clock').value || 0;      // overridden by the host's clock when joining a battle
   try { localStorage.setItem('woi-name', name); } catch { /* private mode */ }
@@ -328,7 +331,8 @@ async function start() {
     if (humans[team] >= MAX_PER_TEAM) team = other(team);
     if (humans[team] >= MAX_PER_TEAM) throw new Error('This squadron room is full (6 v 6).');
     me = addPlane(net?.id || 'solo', name, team, TEAM_TYPE[team], net?.id || 'solo', false);
-    me.spawn(now()); camera.position.copy(me.pos).addScaledVector(me.fwd, -20);
+    me.spawn(now(), onRunway); camera.position.copy(me.pos).addScaledVector(me.fwd, -20);
+    if (onRunway) say('On the runway: open the throttle, then ease the stick back to lift off');
     sky.clock(); $('lobby').style.display = 'none'; $('ui').style.display = 'block'; running = true; window.__woi.me = me; window.__woi.net = net;
   } catch (err) { net?.close(); net = null; for (const p of [...planes.values()]) removePlane(p); $('status').textContent = err.message || String(err); $('go').disabled = false; }
 }
@@ -336,6 +340,6 @@ initControls();
 $('open-controls').addEventListener('click', () => toggleControls(true));
 $('form').addEventListener('submit', e => { e.preventDefault(); start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
-window.__woi = { planes, score, isHost, camera, sky, feed, hit: (p, d) => damage(p, d, null), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
+window.__woi = { planes, score, isHost, camera, sky, feed, H, hit: (p, d) => damage(p, d, null), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
 frame();
 if (params.get('autostart')) start();

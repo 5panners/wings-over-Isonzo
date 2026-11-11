@@ -63,7 +63,7 @@
 <body>
 <canvas id="c"></canvas>
 <canvas id="hud"></canvas>
-<div id="build" aria-label="Build number">Build 9</div>
+<div id="build" aria-label="Build number">Build 10</div>
 <div id="ui">
   <div id="score" class="panel"></div>
   <div id="stats" class="panel"></div>
@@ -87,6 +87,8 @@
       <div><label for="size">Pilots per side <small>(bots fill)</small></label>
         <select id="size"><option>1</option><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option></select></div>
     </div>
+    <label for="startpos">Start</label>
+    <select id="startpos"><option value="air" selected>In the air over your airfield</option><option value="runway">On the runway — take off yourself</option></select>
     <label for="bots">Bots</label>
     <select id="bots"><option value="-1">No bots — human pilots only</option><option value="0">Rookie — slow to turn, poor shots</option><option value="1" selected>Regular — bots fill each side</option><option value="2">Ace — tight turns, deadly at range</option></select>
     <div class="row">

@@ -20,6 +20,8 @@ Open http://localhost:8080. Any static file server works; the game is plain ES m
 
 - **Solo:** leave the squadron password empty. Bots fill both sides.
 - **Multiplayer:** everyone enters the same squadron password. Up to 6 pilots per side; bots fill the remaining seats up to "Pilots per side".
+- **Start:** in the air over your airfield, or on the runway. On the runway, open the throttle, let the tail come up, and ease the stick back at flying speed. Bots take off too when the host starts on the runway.
+- **Balloons:** the observation balloons, their baskets and cables are solid; flying into one destroys the aircraft.
 - **Bots:** Rookie, Regular or Ace, or no bots at all, chosen in the lobby. In multiplayer the host's choice applies.
 - **Collisions:** two aircraft that touch are both destroyed, so don't ram.
 - **Sides:** Italy flies the SPAD VII (faster), Austria-Hungary the Albatros D.III (turns tighter).
@@ -90,7 +92,7 @@ How the game stays in sync:
 
 Nothing here is cheat-proof; it is built for friends sharing a password.
 
-URL parameters: `name`, `pw`, `team` (`it` / `ah`), `size` (1–6), `time` (start hour), `clock` (speed), `bots` (-1 none, 0 rookie, 1 regular, 2 ace), `relay`, `autostart=1`, `shadows=0`.
+URL parameters: `name`, `pw`, `team` (`it` / `ah`), `size` (1–6), `time` (start hour), `clock` (speed), `bots` (-1 none, 0 rookie, 1 regular, 2 ace), `start` (`air` / `runway`), `relay`, `autostart=1`, `shadows=0`.
 
 ## Layout
 
@@ -113,6 +115,6 @@ To add an aircraft, add an entry to `TYPES` in `src/plane.js` with a model build
 
 ## Not in yet
 
-Balloon sectors and ground targets are on the map as scenery only; capture zones, bombing, take-off and landing, and touch controls are still to come.
+Balloon sectors and ground targets are on the map as scenery only; capture zones, bombing, landing, and touch controls are still to come.
 
 Third-party code in `vendor/` (three.js, Trystero) is MIT licensed; see the licence files there.

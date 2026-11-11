@@ -1,6 +1,6 @@
 // Aircraft types, arcade flight model and bot pilot.
 import * as THREE from 'three';
-import { H, AIRFIELDS, HALF } from './world.js';
+import { H, AIRFIELDS, HALF, SECTORS } from './world.js';
 import { SPAD, ALBATROS } from './objects.js';
 
 // One fighter per side for now; add entries here to add aircraft.
@@ -21,6 +21,11 @@ export const BOT_LEVELS = [
   { name: 'Ace', skill: [0.95, 1.1], range: 200, spread: 0.018, cone: 0.9955 },
 ];
 export const botSettings = { level: 1 };
+// Take-off direction along each strip (+1 / -1 along its length) so both sides roll toward the front.
+const RUNWAY_DIR = { it: 1, ah: -1 }, spawnCount = { it: 0, ah: 0 };
+const GEAR = 1.5;                       // height of the aircraft's centre above the ground when standing on its wheels
+// Observation balloons: solid obstacles. Envelope and basket are treated as spheres, the cable as a line to the winch.
+export const BALLOONS = SECTORS.map(s => { const gy = H(s.x, s.z); return { x: s.x, y: gy + s.alt, z: s.z, r: 10.5, basketY: gy + s.alt - 20, wx: s.x + 9, wy: H(s.x + 9, s.z + 7) + 2.5, wz: s.z + 7 }; });
 export const COLLIDE_RADIUS = 4.2;     // two aircraft closer than this have hit each other
 
 export const GUN = { speed: 230, life: 1.5, interval: 0.09, damage: 7, hitRadius: 3.2 };
@@ -42,12 +47,26 @@ export class Plane {
   get local() { return this.net === null; }
   // damage state: each zone runs 0 (sound) to 1 (destroyed)
   resetDamage() { this.dmg = { eng: 0, wing: 0, fuel: 0, ctl: 0 }; this.fuel = 1; this.fire = false; this.fireT = 0; this.dying = false; this.dyRoll = 0; this.power = 0; this.smoke = false; }
-  spawn(now) {
-    const f = AIRFIELDS[this.team], a = Math.random() * 6.28, r = 30 + Math.random() * 70;
-    this.pos.set(f.x + Math.cos(a) * r, 0, f.z + Math.sin(a) * r);
-    this.pos.y = H(this.pos.x, this.pos.z) + 70 + Math.random() * 40;
-    this.quat.setFromAxisAngle(Y, Math.atan2(-this.pos.x, -this.pos.z + 60));   // nose toward the front
-    this.speed = 42; this.throttle = 0.85; this.hp = TYPES[this.type].hp; this.alive = true; this.firing = false;
+  // Start in the air over the home airfield, or lined up on its runway.
+  spawn(now, onRunway = false) {
+    const f = AIRFIELDS[this.team], dir = RUNWAY_DIR[this.team];
+    if (onRunway) {
+      // six places in two rows at the downwind end of the strip, pointing along it toward the front
+      const slot = spawnCount[this.team]++ % 6, along = (-88 + Math.floor(slot / 3) * 16) * dir, across = 14 + (slot % 3 - 1) * 9;
+      const c = Math.cos(-f.rot), s = Math.sin(-f.rot);
+      this.pos.set(f.x + along * c + across * s, 0, f.z - along * s + across * c);
+      this.pos.y = H(this.pos.x, this.pos.z) + GEAR;
+      this.heading = Math.PI / 2 - f.rot + (dir < 0 ? Math.PI : 0);
+      this.quat.setFromAxisAngle(Y, this.heading).multiply(q1.setFromAxisAngle(X, -0.19));
+      this.speed = 0; this.throttle = this.isBot ? 1 : 0; this.tail = 0.19;
+    } else {
+      const a = Math.random() * 6.28, r = 30 + Math.random() * 70;
+      this.pos.set(f.x + Math.cos(a) * r, 0, f.z + Math.sin(a) * r);
+      this.pos.y = H(this.pos.x, this.pos.z) + 70 + Math.random() * 40;
+      this.quat.setFromAxisAngle(Y, Math.atan2(-this.pos.x, -this.pos.z + 60));   // nose toward the front
+      this.speed = 42; this.throttle = 0.85;
+    }
+    this.onGround = onRunway; this.hp = TYPES[this.type].hp; this.alive = true; this.firing = false;
     this.lastHitBy = null; this.bank = 0; this.gunAt = now + 1.5; this.spawnedAt = now; this.resetDamage();
     this.fwd.copy(Z).applyQuaternion(this.quat); this.vdir.copy(this.fwd); this.sink = 0;
   }
@@ -102,8 +121,38 @@ export function startDying(p) {
 // Returns a crash reason ('ground' | 'bounds') or null.
 function crashed(p) {
   if (p.pos.y < Math.max(0.4, H(p.pos.x, p.pos.z) + 1)) return 'ground';
+  for (const b of BALLOONS) {
+    const dx = p.pos.x - b.x, dz = p.pos.z - b.z; if (dx * dx + dz * dz > 40 * 40) continue;
+    if (p.pos.distanceToSquared(v1.set(b.x, b.y, b.z)) < b.r * b.r) return 'balloon';              // envelope
+    if (p.pos.distanceToSquared(v1.set(b.x, b.basketY, b.z)) < 4 * 4) return 'balloon';            // basket
+    // cable: closest point on the line from the basket down to the winch
+    v1.set(b.wx - b.x, b.wy - b.basketY, b.wz - b.z); v2.set(p.pos.x - b.x, p.pos.y - b.basketY, p.pos.z - b.z);
+    const u = THREE.MathUtils.clamp(v2.dot(v1) / v1.lengthSq(), 0, 1);
+    if (v2.addScaledVector(v1, -u).lengthSq() < 1.8 * 1.8) return 'balloon';
+  }
   if (Math.abs(p.pos.x) > HALF + 220 || Math.abs(p.pos.z) > HALF + 220) return 'bounds';
   return null;
+}
+
+// ---------- on the runway (ground handling after Home Skies 1917) ----------
+// steer = -1..1 left/right. Returns a crash reason or null; clears p.onGround at lift-off.
+function groundRoll(p, pitch, steer, input, dt) {
+  const t = TYPES[p.type], takeoff = t.stall * 1.1 * (1 + 0.3 * p.dmg.wing);
+  if (input) p.throttle = input.throttleAbs != null ? input.throttleAbs : THREE.MathUtils.clamp(p.throttle + input.throttle * 0.7 * dt, 0, 1);
+  p.heading -= steer * 0.9 * dt * THREE.MathUtils.clamp(p.speed / 8, 0.15, 1);
+  // the tail comes up as speed builds; holding the stick back keeps the skid dragging on the grass
+  let td = THREE.MathUtils.clamp(1.6 - p.speed / (takeoff * 0.55), 0, 1); if (pitch > 0.3 && p.speed < takeoff) td = Math.max(td, 0.7);
+  const drag = p.speed > 0.05 ? 0.7 + 1.7 * td * (p.power > 0.2 ? 0.25 : 1) : 0;
+  p.speed = Math.max(0, p.speed + (p.power * KD * t.top * t.top * 0.3 - KD * p.speed * p.speed - drag) * dt);
+  p.pos.x += Math.sin(p.heading) * p.speed * dt; p.pos.z += Math.cos(p.heading) * p.speed * dt;
+  p.pos.y = H(p.pos.x, p.pos.z) + GEAR;
+  p.tail += (td * 0.19 - p.tail) * Math.min(1, 3 * dt);
+  p.quat.setFromAxisAngle(Y, p.heading).multiply(q1.setFromAxisAngle(X, -p.tail));
+  p.fwd.copy(Z).applyQuaternion(p.quat); p.vdir.set(Math.sin(p.heading), 0, Math.cos(p.heading)); p.sink = 0;
+  if (input) p.firing = !!input.fire;
+  if ((p.speed >= takeoff && pitch > 0.1 && td < 0.5) || p.speed > takeoff * 1.4) p.onGround = false;      // unstick
+  if (p.pos.y < 1.2) return 'ground';                                                                    // rolled into the sea
+  return Math.abs(p.pos.x) > HALF + 220 || Math.abs(p.pos.z) > HALF + 220 ? 'bounds' : null;
 }
 
 // ---------- human pilot ----------
@@ -111,6 +160,7 @@ function crashed(p) {
 // input = { pitch, roll, yaw (-1..1), throttle (-1..1 change), throttleAbs (0..1 or null), fire }
 export function flyPlayer(p, input, dt) {
   const t = TYPES[p.type], q = p.quat, D = p.dmg, stall = t.stall * (1 + 0.35 * D.wing);
+  if (p.onGround) return groundRoll(p, input.pitch, input.roll * 0.5 + input.yaw, input, dt);
   if (p.dying) input = { pitch: -0.25, roll: p.dyRoll, yaw: 0, throttle: 0, throttleAbs: 0, fire: false };   // out of control
   p.throttle = input.throttleAbs != null ? input.throttleAbs : THREE.MathUtils.clamp(p.throttle + input.throttle * 0.7 * dt, 0, 1);
   // control surfaces lose authority as the aircraft slows
@@ -146,6 +196,11 @@ export function flyPlayer(p, input, dt) {
 
 // ---------- bot pilot: steers a direction vector toward its goal at a limited turn rate ----------
 export function flyBot(p, planes, now, dt) {
+  if (p.onGround) {                                                 // take-off run: full throttle, straight down the strip, then climb away
+    const crash = groundRoll(p, p.speed > TYPES[p.type].stall * 1.1 ? 0.5 : 0, 0, null, dt);
+    if (!p.onGround) { p.fwd.set(Math.sin(p.heading), 0.18, Math.cos(p.heading)).normalize(); p.bank = 0; }
+    return crash;
+  }
   if (p.dying) {                                                    // spinning down out of control
     p.fwd.y = Math.max(-0.85, p.fwd.y - 0.5 * dt); p.fwd.normalize(); p.bank += 2.5 * dt * Math.sign(p.dyRoll || 1);
     p.fwd.applyAxisAngle(Y, 0.5 * dt * Math.sign(p.dyRoll || 1));
@@ -182,6 +237,8 @@ export function flyBot(p, planes, now, dt) {
     const closing = v3.copy(p.fwd).multiplyScalar(p.speed).addScaledVector(o.fwd, -o.speed).dot(v2);
     if (dist < 16 || (closing > 0 && dist / closing < 1.3)) { goal.copy(v2).negate(); goal.y += p.id < o.id ? 0.9 : -0.5; goal.normalize(); p.firing = p.firing && dist > 40; break; }
   }
+  // give the observation balloons and their cables a wide berth
+  for (const b of BALLOONS) { const dx = p.pos.x - b.x, dz = p.pos.z - b.z, d2 = dx * dx + dz * dz; if (d2 < 45 * 45 && p.pos.y < b.y + 30) { const d = Math.sqrt(d2) || 1; goal.x += dx / d * 1.8; goal.z += dz / d * 1.8; } }
   // stay inside the map, below the ceiling, and off the mountains
   if (Math.abs(p.pos.x) > HALF - 20 || Math.abs(p.pos.z) > HALF - 20) goal.set(-p.pos.x, 0.1, -p.pos.z).normalize();
   if (p.pos.y > CEILING - 60) goal.y = Math.min(goal.y, -0.15);
