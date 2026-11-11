@@ -13,7 +13,7 @@ export function startSound() {
   const d = noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   // engine: a recorded propeller loop (assets/engine.mp3); its playback speed follows the revs
   const g = ctx.createGain(); g.gain.value = 0; g.connect(master);
-  eng = { g, src: null };
+  eng = { g, src: null, rate: 1 };
   fetch(new URL('../assets/engine.mp3', import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => {
     const src = ctx.createBufferSource(); src.buffer = seamless(buf); src.loop = true; src.connect(g); src.start(); eng.src = src;
   }).catch(() => { /* no engine sound if the file cannot be loaded */ });
@@ -46,13 +46,16 @@ export function toggleMute() {
   return muted;
 }
 export const isMuted = () => muted;
+export const engineRate = () => (eng && eng.src ? eng.src.playbackRate.value : null);   // for tests
 
 // Called every frame with the player's aircraft state.
 export function updateSound(alive, throttle, speed, topSpeed) {
   if (!ctx) return;
   const t = ctx.currentTime, k = speed / topSpeed;
   // revs follow the engine power and, a little, the airspeed (a dive winds the propeller up)
-  if (eng.src) eng.src.playbackRate.setTargetAtTime(0.62 + throttle * 0.5 + k * 0.16, t, 0.15);
+  // set directly each frame with our own smoothing: scheduled changes to a looping sample's speed are ignored by some browsers
+  eng.rate += (0.55 + throttle * 0.75 + k * 0.2 - eng.rate) * 0.12;
+  if (eng.src) eng.src.playbackRate.value = eng.rate;
   eng.g.gain.setTargetAtTime(alive ? 0.22 + throttle * 0.38 : 0, t, 0.12);
   wind.bp.frequency.setTargetAtTime(300 + k * 900, t, 0.2);
   wind.g.gain.setTargetAtTime(alive ? Math.min(0.22, 0.03 + k * k * 0.1) : 0.02, t, 0.2);
