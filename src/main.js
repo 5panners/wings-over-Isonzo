@@ -38,12 +38,25 @@ const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector
 const bullets = [], puffs = [];
 const tracerMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.16, 0.16, 4), new THREE.MeshBasicMaterial({ color: '#ffe27a', fog: false }), 500);
 const puffMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ flatShading: true }), 400);
-for (const m of [tracerMesh, puffMesh]) { m.frustumCulled = false; m.count = 0; scene.add(m); }
+// glowing puffs (fireballs) are unlit so they stay bright at night
+const glowMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshBasicMaterial({ fog: false }), 120);
+for (const m of [tracerMesh, puffMesh, glowMesh]) { m.frustumCulled = false; m.count = 0; scene.add(m); }
+// explosion flashes: a few point lights kept in the scene and fired in turn, so ground and objects nearby light up briefly
+const FLASH_TIME = 0.45, FLASH_PEAK = 3500;
+const flashes = Array.from({ length: 3 }, () => { const l = new THREE.PointLight('#ffc070', 0, 320, 2); l.userData.t = 0; scene.add(l); return l; });
+let nextFlash = 0;
 function puff(pos, color, size, life, rise = 2, spread = 0) {
   if (puffs.length >= 400) puffs.shift();
-  puffs.push({ p: pos.clone().add(V2.set((Math.random() - 0.5) * spread, (Math.random() - 0.5) * spread, (Math.random() - 0.5) * spread)), c: color, s: size, life, max: life, rise });
+  puffs.push({ p: pos.clone().add(V2.set((Math.random() - 0.5) * spread, (Math.random() - 0.5) * spread, (Math.random() - 0.5) * spread)), c: color, s: size, life, max: life, rise, glow: false });
+  return puffs[puffs.length - 1];
 }
-function explode(pos) { boomSound(pos.distanceTo(camera.position)); for (let i = 0; i < 14; i++) puff(pos, i % 3 ? '#2d2a28' : '#ff9a2e', 1.5 + Math.random() * 2.5, 1.2 + Math.random() * 1.6, 3, 5); }
+function explode(pos) {
+  boomSound(pos.distanceTo(camera.position));
+  for (let i = 0; i < 12; i++) puff(pos, ['#fff2b0', '#ffc24a', '#ff8a2a'][i % 3], 3 + Math.random() * 5, 0.45 + Math.random() * 0.6, 4, 7).glow = true;   // fireball
+  for (let i = 0; i < 20; i++) puff(pos, i % 4 ? '#2d2a28' : '#55504a', 2.5 + Math.random() * 4, 1.8 + Math.random() * 2.8, 3 + Math.random() * 3, 11);       // smoke
+  for (let i = 0; i < 8; i++) puff(pos, '#3a2a1c', 0.5 + Math.random() * 0.5, 0.9 + Math.random() * 0.8, -14 - Math.random() * 10, 16);                         // falling debris
+  const l = flashes[nextFlash++ % flashes.length]; l.position.copy(pos); l.position.y += 4; l.userData.t = FLASH_TIME;
+}
 
 // ---------------- game state ----------------
 const planes = new Map();
@@ -245,12 +258,17 @@ function updateEffects(dt) {
   let n = 0;
   for (const b of bullets) { if (n >= 500) break; Q.setFromUnitVectors(Zax, V.copy(b.v).normalize()); tracerMesh.setMatrixAt(n++, M4.compose(b.p, Q, S3.set(1, 1, 1))); }
   tracerMesh.count = n; tracerMesh.instanceMatrix.needsUpdate = true;
-  n = 0;
+  n = 0; let g = 0;
   for (let i = puffs.length - 1; i >= 0; i--) {
     const f = puffs[i]; f.life -= dt; if (f.life <= 0) { puffs.splice(i, 1); continue; }
     f.p.y += f.rise * dt; const a = f.life / f.max, s = f.s * (1.6 - a) * Math.min(1, a * 3);
-    puffMesh.setMatrixAt(n, M4.compose(f.p, Q.identity(), S3.set(s, s, s))); puffMesh.setColorAt(n++, COL.set(f.c));
+    M4.compose(f.p, Q.identity(), S3.set(s, s, s));
+    if (f.glow) { if (g < 120) { glowMesh.setMatrixAt(g, M4); glowMesh.setColorAt(g++, COL.set(f.c)); } }
+    else { puffMesh.setMatrixAt(n, M4); puffMesh.setColorAt(n++, COL.set(f.c)); }
   }
+  glowMesh.count = g; glowMesh.instanceMatrix.needsUpdate = true; if (glowMesh.instanceColor) glowMesh.instanceColor.needsUpdate = true;
+  // flash: full brightness at once, then a quick fade
+  for (const l of flashes) { l.userData.t = Math.max(0, l.userData.t - dt); const a = l.userData.t / FLASH_TIME; l.intensity = FLASH_PEAK * a * a; }
   puffMesh.count = n; puffMesh.instanceMatrix.needsUpdate = true; if (puffMesh.instanceColor) puffMesh.instanceColor.needsUpdate = true;
 }
 
@@ -366,6 +384,6 @@ $('camease').addEventListener('input', e => setCamEase(e.target.value / 100));
 $('open-controls').addEventListener('click', () => toggleControls(true));
 $('form').addEventListener('submit', e => { e.preventDefault(); start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
-window.__woi = { planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
+window.__woi = { explode, flashes, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
 frame();
 if (params.get('autostart')) start();
