@@ -5,6 +5,7 @@ import { buildObjects } from './objects.js';
 import { AIRFIELDS, SECTORS, riverX, HALF, H } from './world.js';
 import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, flyPlayer, flyBot, flyRemote } from './plane.js';
 import { connect } from './net.js';
+import { startSound, updateSound, toggleMute, isMuted, gunSound, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
 import { pollGamepad, updateControls, initControls, toggleControls, controlsOpen } from './gamepad.js';
 
 const MAX_PER_TEAM = 6, SCORE_LIMIT = 30, RESPAWN = 5, SEND_HZ = 15;
@@ -40,7 +41,7 @@ function puff(pos, color, size, life, rise = 2, spread = 0) {
   if (puffs.length >= 400) puffs.shift();
   puffs.push({ p: pos.clone().add(V2.set((Math.random() - 0.5) * spread, (Math.random() - 0.5) * spread, (Math.random() - 0.5) * spread)), c: color, s: size, life, max: life, rise });
 }
-function explode(pos) { for (let i = 0; i < 14; i++) puff(pos, i % 3 ? '#2d2a28' : '#ff9a2e', 1.5 + Math.random() * 2.5, 1.2 + Math.random() * 1.6, 3, 5); }
+function explode(pos) { boomSound(pos.distanceTo(camera.position)); for (let i = 0; i < 14; i++) puff(pos, i % 3 ? '#2d2a28' : '#ff9a2e', 1.5 + Math.random() * 2.5, 1.2 + Math.random() * 1.6, 3, 5); }
 
 // ---------------- game state ----------------
 const planes = new Map();
@@ -69,7 +70,7 @@ function die(p, by) {          // only ever called by the peer that owns p
 }
 function damage(p, amount, by) {
   if (!p.alive) return;
-  p.hp -= amount; p.lastHitBy = by; p.lastHitAt = now();
+  p.hp -= amount; p.lastHitBy = by; p.lastHitAt = now(); if (p === me) hitTakenSound();
   if (p.hp <= 0) die(p, by);
 }
 
@@ -122,10 +123,10 @@ function manageBots() {
 
 // ---------------- input ----------------
 const keys = new Set(); let mouseFire = false;
-addEventListener('keydown', e => { if (e.code === 'Escape' && (running || controlsOpen())) return toggleControls(); if (controlsOpen()) return; keys.add(e.code); if (running && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); });
+addEventListener('keydown', e => { if (e.code === 'Escape' && (running || controlsOpen())) return toggleControls(); if (controlsOpen()) return; startSound(); if (e.code === 'KeyM' && running) say(toggleMute() ? 'Sound off' : 'Sound on'); keys.add(e.code); if (running && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); });
 addEventListener('keyup', e => keys.delete(e.code));
 addEventListener('blur', () => { keys.clear(); mouseFire = false; });
-$('c').addEventListener('mousedown', () => mouseFire = true); addEventListener('mouseup', () => mouseFire = false);
+$('c').addEventListener('mousedown', () => { startSound(); mouseFire = true; }); addEventListener('mouseup', () => mouseFire = false);
 const k = (...c) => c.some(x => keys.has(x)) ? 1 : 0;
 const clamp1 = v => Math.max(-1, Math.min(1, v));
 function readInput() {                                        // keyboard and controller add together
@@ -147,6 +148,7 @@ function frame() {
   const t = now(), dt = Math.min(0.05, t - last); last = t;
   if (running) step(t, dt);
   updateControls();
+  if (me) updateSound(running && me.alive, me.throttle, me.speed, TYPES[me.type].top);
   updateEffects(dt);
   updateCamera(dt);
   renderer.render(scene, camera);
@@ -166,6 +168,7 @@ function step(t, dt) {
     if (p.alive && p.firing && t >= p.gunAt) {
       p.gunAt = t + GUN.interval;
       V.copy(p.fwd).multiplyScalar(GUN.speed + p.speed).add(V2.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(3));
+      gunSound(p.pos.distanceTo(camera.position), p === me);
       bullets.push({ p: p.pos.clone().addScaledVector(p.fwd, 3.5), v: V.clone(), life: GUN.life, by: p.id, team: p.team, real: p.local });
     }
     if (p.alive && p.hp < 45 && Math.random() < dt * 14) puff(p.pos, '#3a3735', 0.9, 1.3, 1.5, 0.6);
@@ -186,7 +189,7 @@ function step(t, dt) {
     if (hit) {
       puff(hit.pos, '#ffd36b', 0.8, 0.25, 0, 2);
       if (hit.local) damage(hit, GUN.damage, b.by); else net?.send({ t: 'x', to: hit.id, by: b.by, d: GUN.damage }, hit.owner);
-      if (b.by === me?.id) hitFlash = t + 0.12;
+      if (b.by === me?.id) { hitFlash = t + 0.12; hitScoredSound(); }
     }
     if (hit || b.life <= 0) bullets.splice(i, 1);
   }
@@ -218,7 +221,7 @@ function updateCamera(dt) {
   camera.up.set(0, 1, 0);
   if (!me) { const a = now() * 0.03; camera.position.set(Math.sin(a) * 900, 380, 300 + Math.cos(a) * 700); camera.lookAt(0, 40, -80); }
   else if (me.alive) {
-    V.copy(me.pos).addScaledVector(me.fwd, -14); V.y += 3.6; V.addScaledVector(V2.set(0, 1, 0).applyQuaternion(me.quat), 1.2);
+    V.copy(me.pos).addScaledVector(me.fwd, -14); V.y += 4.6;       // offset uses world up only, so rolling never moves the view
     V.y = Math.max(V.y, H(V.x, V.z) + 1.5);                       // never let the camera sink into a hillside
     camera.position.lerp(V, 1 - Math.exp(-7 * dt));
     camera.lookAt(V.copy(me.pos).addScaledVector(me.fwd, 25));
@@ -273,6 +276,7 @@ for (const [id, key] of [['name', 'name'], ['pw', 'pw'], ['team', 'team'], ['siz
 if (!$('name').value) $('name').value = localStorage.getItem('woi-name') || 'Pilot ' + Math.floor(100 + Math.random() * 900);
 
 async function start() {
+  startSound();
   const name = $('name').value.trim().slice(0, 20) || 'Pilot', password = $('pw').value, relay = $('relay').value.trim();
   teamSize = THREE.MathUtils.clamp(+$('size').value || 4, 1, MAX_PER_TEAM);
   try { localStorage.setItem('woi-name', name); } catch { /* private mode */ }
@@ -295,6 +299,6 @@ initControls();
 $('open-controls').addEventListener('click', () => toggleControls(true));
 $('form').addEventListener('submit', e => { e.preventDefault(); start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
-window.__woi = { planes, score, isHost, camera, sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
+window.__woi = { planes, score, isHost, camera, cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
 frame();
 if (params.get('autostart')) start();

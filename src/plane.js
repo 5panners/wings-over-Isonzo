@@ -58,7 +58,10 @@ export function flyPlayer(p, input, dt) {
   const auth = THREE.MathUtils.clamp((p.speed - 6) / (stall * 1.3), 0.12, 1);
   q.multiply(q1.setFromAxisAngle(X, -input.pitch * t.pitch * auth * dt));
   q.multiply(q1.setFromAxisAngle(Z, input.roll * t.roll * auth * dt));
-  q.multiply(q1.setFromAxisAngle(Y, -input.yaw * 0.7 * auth * dt));
+  // rudder swings the nose and skids the flight path round with it, so it turns the aircraft flat without needing bank
+  const rud = -input.yaw * 0.8 * auth * dt;
+  q.multiply(q1.setFromAxisAngle(Y, rud));
+  p.vdir.applyAxisAngle(v3.copy(Y).applyQuaternion(q), rud * 0.75);
   // rightY > 0 means the right wing is high (banked left)
   const rightY = -v1.copy(X).applyQuaternion(q).y, upY = v2.copy(Y).applyQuaternion(q).y;
   // a banked aircraft turns: coordinated-turn rate g * bank / speed

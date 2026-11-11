@@ -30,6 +30,7 @@ Open http://localhost:8080. Any static file server works; the game is plain ES m
 | Rudder | `Q` / `E` |
 | Throttle | `Shift` up, `Ctrl` or `C` down |
 | Fire | `Space` or mouse button |
+| Sound on / off | `M` |
 
 ### Controllers
 
@@ -81,6 +82,7 @@ URL parameters: `name`, `pw`, `team` (`it` / `ah`), `size` (1–6), `relay`, `au
 | `src/objects.js` | Aircraft, balloons, airfields, towns, ground-target models |
 | `src/plane.js` | Aircraft types, flight model, bot pilot |
 | `src/gamepad.js` | Controller bindings, calibration and the setup panel |
+| `src/sound.js` | Synthesised engine, wind, gun and explosion sounds |
 | `src/net.js` | Password rooms over Trystero or the WebSocket relay |
 | `src/main.js` | Game loop, guns, scoring, networking, HUD |
 | `server/relay.js` | Optional WebSocket relay |
@@ -90,6 +92,6 @@ To add an aircraft, add an entry to `TYPES` in `src/plane.js` with a model build
 
 ## Not in yet
 
-Balloon sectors and ground targets are on the map as scenery only; capture zones, bombing, take-off and landing, sound, and touch controls are still to come.
+Balloon sectors and ground targets are on the map as scenery only; capture zones, bombing, take-off and landing, and touch controls are still to come.
 
 Third-party code in `vendor/` (three.js, Trystero) is MIT licensed; see the licence files there.
