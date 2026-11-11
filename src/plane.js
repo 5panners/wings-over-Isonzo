@@ -28,7 +28,7 @@ const GEAR = 1.5;                       // height of the aircraft's centre above
 export const BALLOONS = SECTORS.map(s => { const gy = H(s.x, s.z); return { x: s.x, y: gy + s.alt, z: s.z, r: 10.5, basketY: gy + s.alt - 20, wx: s.x + 9, wy: H(s.x + 9, s.z + 7) + 2.5, wz: s.z + 7 }; });
 export const COLLIDE_RADIUS = 4.2;     // two aircraft closer than this have hit each other
 
-export const GUN = { speed: 230, life: 1.5, interval: 0.09, damage: 7, hitRadius: 3.2 };
+export const GUN = { speed: 230, life: 1.5, interval: 0.09, damage: 3, hitRadius: 3.2 };
 const CEILING = 480, G = 9.81, KD = 0.0055;   // drag coefficient; thrust is sized so level top speed = TYPES[..].top
 const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1), ZERO = new THREE.Vector3();
 const q1 = new THREE.Quaternion(), v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3(), m1 = new THREE.Matrix4();
@@ -89,6 +89,10 @@ export const ZONE_TEXT = {
   tail: ['Tail controls', 'Tail hit: elevator and rudder are weak', 'Tail controls barely answering'],
   fuel: ['Fuel tank', 'Fuel tank holed, losing fuel', 'Fuel pouring out'],
 };
+// Average damage one hit does to each zone. Rounds cost little airframe strength (GUN.damage), so an aircraft
+// is usually crippled system by system before it is destroyed. Engine and tank fail soonest; the structural
+// zones (wings, tail), whose loss is fatal, take the most punishment.
+const ZONE_HIT = { eng: 0.14, fuel: 0.16, wingL: 0.085, wingR: 0.085, tail: 0.085 };
 // Which part of the aircraft a round struck, from the strike point in the aircraft's own frame
 // (x = toward the left wingtip, z = toward the nose). Returns a zone key, 'pilot' or 'body'.
 export function zoneAt(x, z) {
@@ -100,12 +104,12 @@ export function zoneAt(x, z) {
 }
 // Apply one hit to an aircraft we own. Returns messages for its pilot.
 export function takeHit(p, amount, where) {
-  const msgs = [], D = p.dmg, a = 0.12 + Math.random() * 0.14;
+  const msgs = [], D = p.dmg;
   if (!where) where = zoneAt((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6);
   p.hp -= amount;
   if (where === 'pilot') { p.hp -= 8; msgs.push('Pilot wounded'); return msgs; }
   if (where === 'body') return msgs;
-  const was = D[where]; D[where] = Math.min(1, was + a);
+  const a = ZONE_HIT[where] * (0.7 + Math.random() * 0.6), was = D[where]; D[where] = Math.min(1, was + a);
   if (was <= 0.3 && D[where] > 0.3) msgs.push(ZONE_TEXT[where][1]); else if (was <= 0.75 && D[where] > 0.75) msgs.push(ZONE_TEXT[where][2]);
   if (where === 'eng') {
     if (was < 1 && D.eng >= 1) msgs.push('Engine seized: no power');
