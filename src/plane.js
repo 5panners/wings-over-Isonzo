@@ -6,8 +6,8 @@ import { SPAD, ALBATROS } from './objects.js';
 // One fighter per side for now; add entries here to add aircraft.
 export const TYPES = {
   // top / stall in units per second, pitch / roll in radians per second at full control authority
-  spad: { name: 'SPAD VII', team: 'it', build: SPAD, top: 58, stall: 21, pitch: 1.35, roll: 1.9, hp: 100 },             // faster, heavier on the stick
-  albatros: { name: 'Albatros D.III', team: 'ah', build: ALBATROS, top: 52, stall: 18, pitch: 1.55, roll: 2.2, hp: 100 }, // slower, turns tighter
+  spad: { name: 'SPAD VII', team: 'it', build: SPAD, top: 58, stall: 19, pitch: 1.35, roll: 1.9, hp: 100 },             // faster, heavier on the stick
+  albatros: { name: 'Albatros D.III', team: 'ah', build: ALBATROS, top: 52, stall: 16.5, pitch: 1.55, roll: 2.2, hp: 100 }, // slower, turns tighter
 };
 export const TEAM_TYPE = { it: 'spad', ah: 'albatros' };
 export const TEAM_NAME = { it: 'Italy', ah: 'Austria-Hungary' };
@@ -16,9 +16,11 @@ export const TEAM_COLOR = { it: '#3d8bf0', ah: '#e2463b' };
 // Bot difficulty presets. skill scales turn rate and steadiness of aim; range is how far they open fire;
 // spread is how much their aim wanders; cone is how well lined up they must be before firing.
 export const BOT_LEVELS = [
-  { name: 'Rookie', skill: [0.15, 0.4], range: 100, spread: 0.11, cone: 0.9985 },
-  { name: 'Regular', skill: [0.6, 0.9], range: 150, spread: 0.05, cone: 0.997 },
-  { name: 'Ace', skill: [0.95, 1.1], range: 200, spread: 0.018, cone: 0.9955 },
+  // turn: share of the aircraft's turn rate they use; lead: how well they aim ahead of a moving target (1 = perfectly);
+  // burst / pause: seconds firing, then seconds off the trigger
+  { name: 'Rookie', skill: [0.1, 0.3], turn: 0.55, lead: 0.4, range: 90, spread: 0.15, cone: 0.998, burst: 0.6, pause: 1.8 },
+  { name: 'Regular', skill: [0.5, 0.8], turn: 0.72, lead: 0.75, range: 125, spread: 0.08, cone: 0.9975, burst: 0.9, pause: 1.2 },
+  { name: 'Ace', skill: [0.95, 1.1], turn: 0.95, lead: 1, range: 190, spread: 0.02, cone: 0.9955, burst: 2, pause: 0.3 },
 ];
 export const botSettings = { level: 0 };   // rookie by default
 // Take-off direction along each strip (+1 / -1 along its length) so both sides roll toward the front.
@@ -259,12 +261,15 @@ export function flyBot(p, planes, now, dt) {
   const goal = v1;
   p.firing = false;
   if (target) {
-    goal.copy(target.pos).addScaledVector(target.fwd, target.speed * best / GUN.speed);   // lead the shot
+    goal.copy(target.pos).addScaledVector(target.fwd, target.speed * best / GUN.speed * L.lead);   // aim ahead of the target
     goal.addScaledVector(ai.aim, best * L.spread * (1.4 - Math.min(1, ai.skill)));
     if (now > ai.jink) { ai.jink = now + 0.6 + Math.random(); ai.aim.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5); }
     goal.sub(p.pos).normalize();
     if (best < 28) goal.y += 0.5;                                    // don't ram
-    if (best < L.range && goal.dot(p.fwd) > L.cone && now > p.gunAt - 1) p.firing = true;
+    if (best < L.range && goal.dot(p.fwd) > L.cone && now > p.gunAt - 1) {
+      if (now > (ai.burstEnd || 0) + L.pause) ai.burstEnd = now + L.burst * (0.6 + Math.random() * 0.8);      // start a new burst
+      p.firing = now < ai.burstEnd;
+    }
   } else {
     if (now > ai.patrolAt || ai.patrol.distanceTo(p.pos) < 60) { ai.patrolAt = now + 25; ai.patrol.set((Math.random() - 0.5) * 500, 150 + Math.random() * 120, (Math.random() - 0.5) * 800); }
     goal.copy(ai.patrol).sub(p.pos).normalize();
@@ -293,7 +298,7 @@ export function flyBot(p, planes, now, dt) {
   // damage: a dead engine means a glide down; holed wings and cut control wires slow the turn
   const D = p.dmg, dead = p.power <= 0;
   if (dead) { goal.y = Math.min(goal.y, -0.3); goal.normalize(); p.firing = false; }
-  const rate = t.pitch * (0.55 + 0.35 * ai.skill) * (1 - 0.5 * Math.max(D.wingL, D.wingR, D.tail)), ang = p.fwd.angleTo(goal);
+  const rate = t.pitch * L.turn * (0.9 + 0.2 * Math.min(1, ai.skill)) * (1 - 0.5 * Math.max(D.wingL, D.wingR, D.tail)), ang = p.fwd.angleTo(goal);
   const turnY = v3.crossVectors(p.fwd, goal).y;
   if (ang > 1e-4) p.fwd.lerp(goal, Math.min(1, rate * dt / ang)).normalize();
   p.fwd.y = THREE.MathUtils.clamp(p.fwd.y, -0.8, 0.8); p.fwd.normalize();
