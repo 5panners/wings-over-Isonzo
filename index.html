@@ -30,6 +30,28 @@
   button { margin-top: 18px; width: 100%; font: 700 16px Inter, system-ui, sans-serif; padding: 12px; border: 0; border-radius: 4px; background: #1d1b16; color: #efe6cf; cursor: pointer; }
   button:disabled { opacity: .6; cursor: wait; }
   details { margin-top: 12px; font-size: 13px; color: #3a362c; }
+  #controls { display: none; position: fixed; inset: 0; place-items: center; background: rgba(12, 16, 20, .6); padding: 16px; overflow: auto; z-index: 5; }
+  #controls > div { width: min(760px, 100%); background: #efe6cf; color: #1d1b16; border-radius: 6px; padding: 22px 26px; box-sizing: border-box; box-shadow: 0 12px 50px rgba(0, 0, 0, .5); }
+  #controls h2 { font: 700 26px Georgia, serif; margin: 0 0 4px; }
+  #controls button { width: auto; margin: 0; padding: 6px 12px; font: 600 13px Inter, system-ui, sans-serif; background: #fbf6e6; color: #1d1b16; border: 1.5px solid #b9ab86; cursor: pointer; }
+  #controls button:disabled { opacity: .45; cursor: default; }
+  #controls button.primary { background: #1d1b16; color: #efe6cf; border-color: #1d1b16; padding: 8px 22px; }
+  #controls table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  #controls th { text-align: left; font-weight: 600; white-space: nowrap; padding-right: 10px; }
+  #controls td, #controls th { padding: 6px 4px; border-bottom: 1px solid #d8cba6; vertical-align: middle; }
+  #controls tr.cap td, #controls tr.cap th { background: #fbe9b0; }
+  #controls small { color: #5b5444; }
+  #controls label { display: inline-flex; align-items: center; gap: 4px; margin: 0 8px 0 0; font-weight: 400; font-size: 12.5px; white-space: nowrap; }
+  #controls input[type=checkbox] { width: auto; }
+  #controls .btns { white-space: nowrap; text-align: right; } #controls .btns button { margin-left: 6px; }
+  #controls .pads { margin: 6px 0 12px; font-size: 13.5px; } #controls .pads span { display: block; color: #1f6a2c; font-weight: 600; }
+  .meter { position: relative; width: 90px; height: 10px; background: #d8cba6; border-radius: 2px; overflow: hidden; }
+  .meter i { position: absolute; top: 0; bottom: 0; background: #8a5a1c; }
+  #controls .cal { display: flex; gap: 14px; align-items: center; justify-content: space-between; margin: 14px 0; padding: 10px 12px; background: #fbf6e6; border: 1px solid #cdbf9a; border-radius: 4px; font-size: 13.5px; }
+  #controls .sliders { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; } #controls .sliders label { display: block; font-weight: 600; font-size: 13px; margin: 0; white-space: normal; }
+  #controls .sliders output { float: right; font-weight: 400; } #controls input[type=range] { padding: 0; border: 0; background: none; }
+  #controls .foot { display: flex; justify-content: space-between; margin-top: 16px; }
+  #open-controls { margin-top: 8px; background: none; color: #1d1b16; border: 1.5px solid #1d1b16; font-size: 14px; padding: 9px; }
   #status { min-height: 20px; margin-top: 10px; font-size: 13.5px; color: #8a1d17; }
 </style>
 <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
@@ -43,7 +65,7 @@
   <div id="feed"></div>
   <div id="msg"></div>
   <div id="netinfo"></div>
-  <div id="help">W/S or ↑/↓ pitch · A/D or ←/→ roll · Q/E rudder · Shift / Ctrl throttle · Space or mouse to fire</div>
+  <div id="help">W/S or ↑/↓ pitch · A/D or ←/→ roll · Q/E rudder · Shift / Ctrl throttle · Space or mouse to fire · Esc: controller setup</div>
 </div>
 <div id="lobby">
   <form id="form" autocomplete="off">
@@ -65,9 +87,14 @@
       <input id="relay" placeholder="wss://your-relay.example">
     </details>
     <button id="go">Take off</button>
+    <button type="button" id="open-controls">Controller setup</button>
     <div id="status" role="status"></div>
   </form>
 </div>
+<div id="controls" role="dialog" aria-label="Controller setup"><div>
+  <h2>Controller setup</h2>
+  <div id="controls-body"></div>
+</div></div>
 <script type="module" src="src/main.js"></script>
 </body>
 </html>

@@ -31,6 +31,18 @@ Open http://localhost:8080. Any static file server works; the game is plain ES m
 | Throttle | `Shift` up, `Ctrl` or `C` down |
 | Fire | `Space` or mouse button |
 
+### Controllers
+
+Gamepads, joysticks, throttles and rudder pedals work alongside the keyboard. Open **Controller setup** from the lobby, or press `Esc` in flight.
+
+- **Assign:** press Assign next to an action, then move that control (or press that button). Each binding remembers its device, so a stick, a throttle and pedals can be mixed.
+- **Standard layout:** an Xbox / PlayStation style pad is set up automatically — left stick pitch and roll, right stick rudder and throttle, right trigger fires.
+- **Lever:** tick "lever" on the throttle axis when it is a real throttle lever, so its position sets the throttle directly.
+- **Calibrate:** two steps — release everything to record the centres, then move every control to its end stops.
+- **Dead zone / response curve:** ignore small movements near centre, and soften the response around it.
+
+Settings are saved in the browser.
+
 Add `?shadows=0` to the URL on slow machines.
 
 ## Multiplayer
@@ -59,6 +71,7 @@ URL parameters: `name`, `pw`, `team` (`it` / `ah`), `size` (1–6), `relay`, `au
 | `src/terrain.js` | Terrain, river, sea, trees, sky |
 | `src/objects.js` | Aircraft, balloons, airfields, towns, ground-target models |
 | `src/plane.js` | Aircraft types, flight model, bot pilot |
+| `src/gamepad.js` | Controller bindings, calibration and the setup panel |
 | `src/net.js` | Password rooms over Trystero or the WebSocket relay |
 | `src/main.js` | Game loop, guns, scoring, networking, HUD |
 | `server/relay.js` | Optional WebSocket relay |
@@ -68,6 +81,6 @@ To add an aircraft, add an entry to `TYPES` in `src/plane.js` with a model build
 
 ## Not in yet
 
-Balloon sectors and ground targets are on the map as scenery only; capture zones, bombing, take-off and landing, sound, and gamepad/touch controls are still to come.
+Balloon sectors and ground targets are on the map as scenery only; capture zones, bombing, take-off and landing, sound, and touch controls are still to come.
 
 Third-party code in `vendor/` (three.js, Trystero) is MIT licensed; see the licence files there.

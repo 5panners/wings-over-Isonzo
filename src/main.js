@@ -5,6 +5,7 @@ import { buildObjects } from './objects.js';
 import { AIRFIELDS, SECTORS, riverX, HALF } from './world.js';
 import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, flyPlayer, flyBot, flyRemote } from './plane.js';
 import { connect } from './net.js';
+import { pollGamepad, updateControls, initControls, toggleControls, controlsOpen } from './gamepad.js';
 
 const MAX_PER_TEAM = 6, SCORE_LIMIT = 30, RESPAWN = 5, SEND_HZ = 15;
 const BOT_NAMES = { it: ['Ten. Rossi', 'Serg. Bianchi', 'Cap. Moretti', 'Ten. Ferrari', 'Serg. Conti', 'Ten. Galli'], ah: ['Lt. Huber', 'Fw. Novak', 'Hptm. Steiner', 'Lt. Horvath', 'Zgf. Bauer', 'Oblt. Kovacs'] };
@@ -121,18 +122,23 @@ function manageBots() {
 
 // ---------------- input ----------------
 const keys = new Set(); let mouseFire = false;
-addEventListener('keydown', e => { keys.add(e.code); if (running && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); });
+addEventListener('keydown', e => { if (e.code === 'Escape' && (running || controlsOpen())) return toggleControls(); if (controlsOpen()) return; keys.add(e.code); if (running && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); });
 addEventListener('keyup', e => keys.delete(e.code));
 addEventListener('blur', () => { keys.clear(); mouseFire = false; });
 $('c').addEventListener('mousedown', () => mouseFire = true); addEventListener('mouseup', () => mouseFire = false);
 const k = (...c) => c.some(x => keys.has(x)) ? 1 : 0;
-const readInput = () => ({
-  pitch: k('KeyS', 'ArrowDown') - k('KeyW', 'ArrowUp'),       // S / down arrow pulls the nose up
-  roll: k('KeyD', 'ArrowRight') - k('KeyA', 'ArrowLeft'),
-  yaw: k('KeyE') - k('KeyQ'),
-  throttle: k('ShiftLeft', 'ShiftRight') - k('ControlLeft', 'KeyC'),
-  fire: k('Space') || mouseFire,
-});
+const clamp1 = v => Math.max(-1, Math.min(1, v));
+function readInput() {                                        // keyboard and controller add together
+  const g = pollGamepad();
+  return {
+    pitch: clamp1(k('KeyS', 'ArrowDown') - k('KeyW', 'ArrowUp') + g.pitch),       // S / down arrow / stick back pulls the nose up
+    roll: clamp1(k('KeyD', 'ArrowRight') - k('KeyA', 'ArrowLeft') + g.roll),
+    yaw: clamp1(k('KeyE') - k('KeyQ') + g.yaw),
+    throttle: clamp1(k('ShiftLeft', 'ShiftRight') - k('ControlLeft', 'KeyC') + g.throttle),
+    throttleAbs: g.throttleAbs,
+    fire: k('Space') || mouseFire || g.fire,
+  };
+}
 
 // ---------------- main loop ----------------
 let last = now();
@@ -140,6 +146,7 @@ function frame() {
   requestAnimationFrame(frame);
   const t = now(), dt = Math.min(0.05, t - last); last = t;
   if (running) step(t, dt);
+  updateControls();
   updateEffects(dt);
   updateCamera(dt);
   renderer.render(scene, camera);
@@ -283,6 +290,8 @@ async function start() {
     $('lobby').style.display = 'none'; $('ui').style.display = 'block'; running = true; window.__woi.me = me; window.__woi.net = net;
   } catch (err) { net?.close(); net = null; for (const p of [...planes.values()]) removePlane(p); $('status').textContent = err.message || String(err); $('go').disabled = false; }
 }
+initControls();
+$('open-controls').addEventListener('click', () => toggleControls(true));
 $('form').addEventListener('submit', e => { e.preventDefault(); start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
 window.__woi = { planes, score, isHost, sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };

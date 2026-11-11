@@ -49,10 +49,10 @@ function integrate(p, dt) {
   return null;
 }
 
-// ---------- human pilot: input = { pitch, roll, yaw (-1..1), throttle (-1..1 change), fire } ----------
+// ---------- human pilot: input = { pitch, roll, yaw (-1..1), throttle (-1..1 change), throttleAbs (0..1 or null), fire } ----------
 export function flyPlayer(p, input, dt) {
   const t = TYPES[p.type];
-  p.throttle = THREE.MathUtils.clamp(p.throttle + input.throttle * 0.6 * dt, 0, 1);
+  p.throttle = input.throttleAbs != null ? input.throttleAbs : THREE.MathUtils.clamp(p.throttle + input.throttle * 0.6 * dt, 0, 1);
   const auth = THREE.MathUtils.clamp(p.speed / 30, 0.35, 1.1);          // controls go soft when slow
   p.quat.multiply(q1.setFromAxisAngle(X, -input.pitch * t.pitch * auth * dt));
   p.quat.multiply(q1.setFromAxisAngle(Z, input.roll * t.roll * auth * dt));
