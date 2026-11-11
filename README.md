@@ -22,7 +22,7 @@ Open http://localhost:8080. Any static file server works; the game is plain ES m
 - **Multiplayer:** everyone enters the same squadron password. Up to 6 pilots per side; bots fill the remaining seats up to "Pilots per side".
 - **Start:** in the air over your airfield, or on the runway. On the runway, open the throttle, let the tail come up, and ease the stick back at flying speed. Bots take off too when the host starts on the runway.
 - **Balloons:** the observation balloons, their baskets and cables are solid; flying into one destroys the aircraft.
-- **Bots:** Rookie, Regular or Ace, or no bots at all, chosen in the lobby. In multiplayer the host's choice applies.
+- **Bots:** Rookie (the default), Regular or Ace, or no bots at all, chosen in the lobby. In multiplayer the host's choice applies.
 - **Collisions:** two aircraft that touch are both destroyed, so don't ram.
 - **Sides:** Italy flies the SPAD VII (faster), Austria-Hungary the Albatros D.III (turns tighter).
 - **Round:** every aircraft lost gives the other side a point. First to 30 wins and the round restarts.
@@ -49,7 +49,7 @@ Based on Home Skies 1917, with hits located on the airframe: where a round strik
 | Tail controls | Weak elevator and rudder; destroyed means the tail is shot away |
 | Fuel tank | Leaks; with no fuel the engine stops |
 
-Each change in handling is announced in the feed. A burning aircraft loses airframe strength until the fire is blown out in a dive faster than top speed. An aircraft that loses a wing, its tail or all its strength goes down: it noses over, spins and falls fast. The loss is scored at that moment. The panel at the bottom left shows every zone.
+Each change in handling is announced in the feed. A burning aircraft loses airframe strength until the fire is blown out in a dive faster than top speed. An aircraft that loses a wing, its tail or all its strength goes down: it noses over, spins and falls fast. The loss is scored at that moment. The panel at the bottom left shows every zone. When it is your own aircraft going down, the view cuts to a cinematic shot: a fixed camera ahead of the fall, a tighter lens and letterbox bars, held on the wreck until you are back in the air.
 
 ### Day and night
 

@@ -56,6 +56,12 @@
   #controls .sliders output { float: right; font-weight: 400; } #controls input[type=range] { padding: 0; border: 0; background: none; }
   #controls .foot { display: flex; justify-content: space-between; margin-top: 16px; }
   #open-controls { margin-top: 8px; background: none; color: #1d1b16; border: 1.5px solid #1d1b16; font-size: 14px; padding: 9px; }
+  /* letterbox bars for the going-down shot */
+  body::before, body::after { content: ""; position: fixed; left: 0; right: 0; height: 0; background: #000; z-index: 4; transition: height .5s ease; pointer-events: none; }
+  body::before { top: 0; } body::after { bottom: 0; }
+  body.cine::before, body.cine::after { height: 11vh; }
+  body.cine #stats, body.cine #help, body.cine #score, body.cine #netinfo { opacity: 0; }
+  #stats, #help, #score, #netinfo { transition: opacity .4s; }
   #status { min-height: 20px; margin-top: 10px; font-size: 13.5px; color: #8a1d17; }
 </style>
 <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
@@ -63,7 +69,7 @@
 <body>
 <canvas id="c"></canvas>
 <canvas id="hud"></canvas>
-<div id="build" aria-label="Build number">Build 13</div>
+<div id="build" aria-label="Build number">Build 14</div>
 <div id="ui">
   <div id="score" class="panel"></div>
   <div id="stats" class="panel"></div>
@@ -90,7 +96,7 @@
     <label for="startpos">Start</label>
     <select id="startpos"><option value="air" selected>In the air over your airfield</option><option value="runway">On the runway — take off yourself</option></select>
     <label for="bots">Bots</label>
-    <select id="bots"><option value="-1">No bots — human pilots only</option><option value="0">Rookie — slow to turn, poor shots</option><option value="1" selected>Regular — bots fill each side</option><option value="2">Ace — tight turns, deadly at range</option></select>
+    <select id="bots"><option value="-1">No bots — human pilots only</option><option value="0" selected>Rookie — slow to turn, poor shots</option><option value="1">Regular</option><option value="2">Ace — tight turns, deadly at range</option></select>
     <div class="row">
       <div><label for="time">Start at</label>
         <select id="time"><option value="5.5">05:30 before dawn</option><option value="6" selected>06:00 sunrise</option><option value="9">09:00 morning</option><option value="13">13:00 midday</option><option value="17">17:00 golden evening</option><option value="18.2">18:15 sunset</option><option value="23">23:00 moonlit night</option></select></div>

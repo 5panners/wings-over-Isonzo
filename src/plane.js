@@ -20,7 +20,7 @@ export const BOT_LEVELS = [
   { name: 'Regular', skill: [0.6, 0.9], range: 150, spread: 0.05, cone: 0.997 },
   { name: 'Ace', skill: [0.95, 1.1], range: 200, spread: 0.018, cone: 0.9955 },
 ];
-export const botSettings = { level: 1 };
+export const botSettings = { level: 0 };   // rookie by default
 // Take-off direction along each strip (+1 / -1 along its length) so both sides roll toward the front.
 const RUNWAY_DIR = { it: 1, ah: -1 }, spawnCount = { it: 0, ah: 0 };
 const GEAR = 1.5;                       // height of the aircraft's centre above the ground when standing on its wheels

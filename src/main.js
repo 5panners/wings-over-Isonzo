@@ -274,12 +274,23 @@ function updateEffects(dt) {
 
 // Chase camera as in Home Skies 1917: follows behind and above, and always keeps the horizon level.
 const camLook = new THREE.Vector3();
+let cine = false;                      // true while the going-down shot is running
 let camEase = 0.45;                    // 0 = camera locked tight to the aircraft, 1 = very lazy
 try { const v = parseFloat(localStorage.getItem('woi-camease')); if (v >= 0 && v <= 1) camEase = v; } catch { /* no storage */ }
 function setCamEase(v) { camEase = THREE.MathUtils.clamp(v, 0, 1); try { localStorage.setItem('woi-camease', camEase); } catch { /* no storage */ } $('camease').value = Math.round(camEase * 100); }
 function updateCamera(dt) {
   camera.up.set(0, 1, 0);
   if (!me) { const a = now() * 0.03; camera.position.set(Math.sin(a) * 900, 380, 300 + Math.cos(a) * 700); camera.lookAt(0, 40, -80); }
+  else if (me.alive && me.dying) {
+    // cinematic: a fixed camera set ahead of and beside the falling aircraft watches it come down past the lens
+    if (!cine || camera.position.distanceToSquared(me.pos) > 110 * 110) {
+      cine = true;
+      V2.set(-me.vdir.z, 0, me.vdir.x); if (V2.lengthSq() < 0.01) V2.set(1, 0, 0); V2.normalize();           // level direction across the flight path
+      V.copy(me.pos).addScaledVector(me.vdir, me.speed * 0.9).addScaledVector(V2, (Math.random() < 0.5 ? -1 : 1) * 16); V.y += 3;
+      V.y = Math.max(V.y, H(V.x, V.z) + 2.5); camera.position.copy(V);
+    }
+    camLook.lerp(me.pos, 1 - Math.exp(-10 * dt)); camera.lookAt(camLook);
+  }
   else if (me.alive) {
     V.copy(me.pos).addScaledVector(me.fwd, -14); V.y += 4.6;       // offset uses world up only, so rolling never moves the view
     V.y = Math.max(V.y, H(V.x, V.z) + 1.5);                       // never let the camera sink into a hillside
@@ -289,7 +300,13 @@ function updateCamera(dt) {
     camera.position.lerp(V, 1 - Math.exp(-k * dt));
     camLook.lerp(V.copy(me.pos).addScaledVector(me.fwd, 25), 1 - Math.exp(-k * 1.5 * dt));
     camera.lookAt(camLook);
-  } else camera.lookAt(camLook.lerp(me.pos, 1 - Math.exp(-3 * dt)));
+  } else camera.lookAt(camLook.lerp(me.pos, 1 - Math.exp(-3 * dt)));                // wreck: hold the shot on the crash
+  // cinematic framing: tighter lens and letterbox bars while going down and until the respawn
+  const wantCine = !!me && (me.dying || (cine && !me.alive));
+  if (!wantCine) cine = false;
+  const fov = wantCine ? 38 : 62;
+  if (Math.abs(camera.fov - fov) > 0.1) { camera.fov += (fov - camera.fov) * (1 - Math.exp(-6 * dt)); camera.updateProjectionMatrix(); }
+  document.body.classList.toggle('cine', wantCine);
   // advance the clock; this also keeps the shadow map centred on the aircraft, and tight around it when low
   // so that its shadow on the ground is crisp
   const c = me ? me.pos : V.set(0, 0, 0);
@@ -313,12 +330,12 @@ function drawHud(t) {
     ctx.stroke();
     ctx.fillStyle = '#fff'; ctx.shadowColor = '#000'; ctx.shadowBlur = 4; ctx.fillText(`${p.name}  ${Math.round(d)} m`, s[0], s[1] - 15);   // one unit = one metre at aircraft scale, the same scale the airspeed uses ctx.shadowBlur = 0;
   }
-  if (me.alive) {                                              // gunsight
+  if (me.alive && !me.dying) {                                 // gunsight
     const s = proj(V2.copy(me.pos).addScaledVector(me.fwd, 190));
     if (s) { ctx.strokeStyle = t < hitFlash ? '#ff5a3c' : '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(s[0], s[1], 13, 0, 6.3); ctx.moveTo(s[0] - 22, s[1]); ctx.lineTo(s[0] - 6, s[1]); ctx.moveTo(s[0] + 6, s[1]); ctx.lineTo(s[0] + 22, s[1]); ctx.moveTo(s[0], s[1] - 22); ctx.lineTo(s[0], s[1] - 6); ctx.stroke(); }
   }
   // oil thrown back from a damaged engine spatters the pilot's view
-  if (me.alive && me.dmg.eng > 0.3) {
+  if (me.alive && !me.dying && me.dmg.eng > 0.3) {
     ctx.fillStyle = 'rgba(22, 13, 6, 0.6)';
     for (let i = 0, n = Math.floor(me.dmg.eng * 16); i < n; i++) { const o = OIL[i]; ctx.beginPath(); ctx.ellipse(o[0] * W, o[1] * Hh, o[2] * Hh, o[2] * Hh * o[3], o[4], 0, 6.3); ctx.fill(); }
   }
