@@ -1,9 +1,10 @@
 // Wings over Isonzo — minimal playable build: team dogfight over the Isonzo Front map.
 import * as THREE from 'three';
 import { buildTerrain } from './terrain.js';
+import { createDayNight } from './daynight.js';
 import { buildObjects } from './objects.js';
 import { AIRFIELDS, SECTORS, riverX, HALF, H } from './world.js';
-import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, flyPlayer, flyBot, flyRemote } from './plane.js';
+import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, BOT_LEVELS, botSettings, COLLIDE_RADIUS, flyPlayer, flyBot, flyRemote } from './plane.js';
 import { connect } from './net.js';
 import { startSound, updateSound, toggleMute, isMuted, gunSound, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
 import { pollGamepad, updateControls, initControls, toggleControls, controlsOpen } from './gamepad.js';
@@ -20,7 +21,8 @@ renderer.shadowMap.enabled = new URLSearchParams(location.search).get('shadows')
  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, 1, 1, 12000);
-const { sun, SUN } = buildTerrain(scene);
+const { sun, hemi } = buildTerrain(scene);
+const sky = createDayNight(scene, { sun, hemi });   // sky.tod = hour of day, sky.rate = clock speed
 buildObjects(scene).setMode({ map: false, rings: false, flights: [], lineup: false });
 { const s = sun.shadow.camera; s.left = s.bottom = -260; s.right = s.top = 260; s.near = 100; s.far = 4500; s.updateProjectionMatrix(); }
 const hud = $('hud'), ctx = hud.getContext('2d');
@@ -57,16 +59,16 @@ function removePlane(p) { scene.remove(p.mesh); planes.delete(p.id); }
 function say(text) { feed.unshift({ text, at: now() }); feed.length = Math.min(feed.length, 6); }
 const label = id => { const p = planes.get(id); return p ? `<b style="color:${TEAM_COLOR[p.team]}">${p.name.replace(/[<&]/g, '')}</b>` : 'someone'; };
 
-function onKill(victimId, killerId) {
+function onKill(victimId, killerId, collidedWith) {
   const v = planes.get(victimId); if (!v) return;
-  say(killerId && planes.has(killerId) ? `${label(killerId)} shot down ${label(victimId)}` : `${label(victimId)} crashed`);
+  say(collidedWith ? `${label(victimId)} collided with ${label(collidedWith)}` : killerId && planes.has(killerId) ? `${label(killerId)} shot down ${label(victimId)}` : `${label(victimId)} crashed`);
   if (isHost() && !roundEndAt) { score[other(v.team)]++; if (score[other(v.team)] >= SCORE_LIMIT) roundEndAt = now() + 8; }
 }
-function die(p, by) {          // only ever called by the peer that owns p
+function die(p, by, collidedWith) {          // only ever called by the peer that owns p
   if (!p.alive) return;
-  const t = now(), killer = by || (t - p.lastHitAt < 10 ? p.lastHitBy : null);
+  const t = now(), killer = collidedWith ? null : by || (t - p.lastHitAt < 10 ? p.lastHitBy : null);
   p.alive = false; p.firing = false; p.respawnAt = t + RESPAWN; explode(p.pos);
-  onKill(p.id, killer); net?.send({ t: 'k', v: p.id, by: killer });
+  onKill(p.id, killer, collidedWith); net?.send({ t: 'k', v: p.id, by: killer, c: collidedWith });
 }
 function damage(p, amount, by) {
   if (!p.alive) return;
@@ -79,7 +81,7 @@ function packState() {
   const e = [];
   for (const p of planes.values()) if (p.local) e.push([p.id, p.name, p.team, p.type, +p.pos.x.toFixed(1), +p.pos.y.toFixed(1), +p.pos.z.toFixed(1), +p.quat.x.toFixed(3), +p.quat.y.toFixed(3), +p.quat.z.toFixed(3), +p.quat.w.toFixed(3), +p.speed.toFixed(1), Math.round(p.hp), (p.alive ? 1 : 0) | (p.firing ? 2 : 0) | (p.isBot ? 4 : 0)]);
   const m = { t: 's', e };
-  if (isHost()) { m.sc = [score.it, score.ah]; m.n = teamSize; }
+  if (isHost()) { m.sc = [score.it, score.ah]; m.n = teamSize; m.d = [+sky.tod.toFixed(3), sky.rate]; m.b = botSettings.level; }
   return m;
 }
 function onMessage(m, from) {
@@ -95,13 +97,16 @@ function onMessage(m, from) {
       n.pos.set(x, y, z); n.quat.set(qx, qy, qz, qw).normalize(); n.fwd.copy(Zax).applyQuaternion(n.quat); n.speed = speed; n.at = t;
       const alive = !!(flags & 1);
       if (p.alive && !alive) explode(p.pos);
-      if (!p.alive && alive) { p.pos.copy(n.pos); p.quat.copy(n.quat); }
+      if (!p.alive && alive) { p.pos.copy(n.pos); p.quat.copy(n.quat); p.spawnedAt = t; }
       p.owner = from; p.alive = alive; p.firing = !!(flags & 2); p.hp = hp; p.speed = speed; p.seen = t; p.team = team;
     }
-    if (m.sc && !isHost()) { score.it = m.sc[0]; score.ah = m.sc[1]; teamSize = m.n; }
+    if (m.sc && !isHost()) {
+      score.it = m.sc[0]; score.ah = m.sc[1]; teamSize = m.n; if (m.b != null) botSettings.level = THREE.MathUtils.clamp(m.b | 0, -1, BOT_LEVELS.length - 1);
+      if (m.d) { sky.rate = +m.d[1] || 0; const off = Math.abs(sky.tod - m.d[0]); if (Math.min(off, 24 - off) > 0.03) sky.tod = +m.d[0] || 0; }   // the host's clock is everyone's clock
+    }
   } else if (m.t === 'x') {                                   // someone's bullet hit a plane we own
     const p = planes.get(m.to); if (p && p.local) damage(p, Math.min(+m.d || 0, 25), m.by);
-  } else if (m.t === 'k') onKill(m.v, m.by);
+  } else if (m.t === 'k') onKill(m.v, m.by, m.c);
 }
 function onLeave(id) { for (const p of [...planes.values()]) if (p.owner === id && !p.local) { if (!p.isBot) say(`${label(p.id)} left`); removePlane(p); } }
 
@@ -110,7 +115,7 @@ function manageBots() {
   if (!isHost()) { for (const p of [...planes.values()]) if (p.isBot && p.local) removePlane(p); return; }
   for (const team of ['it', 'ah']) {
     let humans = 0; for (const p of planes.values()) if (!p.isBot && p.team === team) humans++;
-    const want = Math.max(0, teamSize - humans);
+    const want = botSettings.level < 0 ? 0 : Math.max(0, teamSize - humans);      // level -1 = no bots
     for (let i = 0; i < MAX_PER_TEAM; i++) {
       const id = `bot-${team}-${i}`, p = planes.get(id);
       if (i < want) {
@@ -123,7 +128,9 @@ function manageBots() {
 
 // ---------------- input ----------------
 const keys = new Set(); let mouseFire = false;
-addEventListener('keydown', e => { if (e.code === 'Escape' && (running || controlsOpen())) return toggleControls(); if (controlsOpen()) return; startSound(); if (e.code === 'KeyM' && running) say(toggleMute() ? 'Sound off' : 'Sound on'); keys.add(e.code); if (running && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); });
+addEventListener('keydown', e => { if (e.code === 'Escape' && (running || controlsOpen())) return toggleControls(); if (controlsOpen()) return; startSound(); if (e.code === 'KeyM' && running) say(toggleMute() ? 'Sound off' : 'Sound on');
+  if (running && (e.code === 'BracketLeft' || e.code === 'BracketRight')) { if (isHost()) { sky.tod = (sky.tod + (e.code === 'BracketRight' ? 1 : 23)) % 24; say('Time set to ' + sky.clock()); } else say('Only the host can change the time'); }
+  keys.add(e.code); if (running && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); });
 addEventListener('keyup', e => keys.delete(e.code));
 addEventListener('blur', () => { keys.clear(); mouseFire = false; });
 $('c').addEventListener('mousedown', () => { startSound(); mouseFire = true; }); addEventListener('mouseup', () => mouseFire = false);
@@ -146,7 +153,7 @@ let last = now();
 function frame() {
   requestAnimationFrame(frame);
   const t = now(), dt = Math.min(0.05, t - last); last = t;
-  if (running) step(t, dt);
+  if (running && !window.__woi.freeze) step(t, dt);   // freeze: test hook to hold the simulation still
   updateControls();
   if (me) updateSound(running && me.alive, me.throttle, me.speed, TYPES[me.type].top);
   updateEffects(dt);
@@ -163,6 +170,9 @@ function step(t, dt) {
     } else if (p.alive) {
       const crash = p === me ? flyPlayer(p, readInput(), dt) : flyBot(p, planes, t, dt);
       if (crash) die(p, null);
+      else if (t - p.spawnedAt > 3) {                           // mid-air collision: each owner destroys its own aircraft
+        for (const o of planes.values()) if (o !== p && o.alive && t - (o.spawnedAt || 0) > 3 && o.pos.distanceToSquared(p.pos) < COLLIDE_RADIUS * COLLIDE_RADIUS) { die(p, null, o.id); if (o.local) die(o, null, p.id); break; }
+      }
     } else if (t > p.respawnAt && !roundEndAt) p.spawn(t);
     // guns: real bullets for planes we own, cosmetic tracers for everyone else
     if (p.alive && p.firing && t >= p.gunAt) {
@@ -226,9 +236,9 @@ function updateCamera(dt) {
     camera.position.lerp(V, 1 - Math.exp(-7 * dt));
     camera.lookAt(V.copy(me.pos).addScaledVector(me.fwd, 25));
   } else camera.lookAt(me.pos);
-  // keep the shadow map centred on the action
+  // advance the clock; this also keeps the shadow map centred on the action
   const c = me ? me.pos : V.set(0, 0, 0);
-  sun.target.position.set(Math.round(c.x / 20) * 20, 0, Math.round(c.z / 20) * 20); sun.position.copy(sun.target.position).addScaledVector(SUN, 2200); sun.target.updateMatrixWorld();
+  sky.update(dt, c, camera);
 }
 
 // ---------------- HUD ----------------
@@ -267,18 +277,20 @@ function drawHud(t) {
     : !me.alive ? `Shot down<small>back in the air in ${Math.max(0, Math.ceil(me.respawnAt - t))} s</small>`
     : oobSince ? 'Turn back<small>you are leaving the combat area</small>'
     : me.speed < TYPES[me.type].stall * 1.05 ? 'Stall<small>nose down, throttle up</small>' : '';
-  $('netinfo').textContent = net ? `${net.kind === 'p2p' ? 'peer-to-peer' : 'relay'} · ${net.peers.size + 1} pilot${net.peers.size ? 's' : ''} online${isHost() ? ' · you host the bots' : ''}` : 'solo flight';
+  $('netinfo').textContent = net ? `${net.kind === 'p2p' ? 'peer-to-peer' : 'relay'} · ${net.peers.size + 1} pilot${net.peers.size ? 's' : ''} online${isHost() ? ' · you host the bots' : ''} · ${sky.clock()}` : 'solo flight · ' + sky.clock();
 }
 
 // ---------------- lobby ----------------
 const params = new URLSearchParams(location.search);
-for (const [id, key] of [['name', 'name'], ['pw', 'pw'], ['team', 'team'], ['size', 'size'], ['relay', 'relay']]) if (params.get(key)) $(id).value = params.get(key);
+for (const [id, key] of [['name', 'name'], ['pw', 'pw'], ['team', 'team'], ['size', 'size'], ['relay', 'relay'], ['time', 'time'], ['clock', 'clock'], ['bots', 'bots']]) if (params.get(key)) $(id).value = params.get(key);
 if (!$('name').value) $('name').value = localStorage.getItem('woi-name') || 'Pilot ' + Math.floor(100 + Math.random() * 900);
 
 async function start() {
   startSound();
   const name = $('name').value.trim().slice(0, 20) || 'Pilot', password = $('pw').value, relay = $('relay').value.trim();
   teamSize = THREE.MathUtils.clamp(+$('size').value || 4, 1, MAX_PER_TEAM);
+  botSettings.level = THREE.MathUtils.clamp(+$('bots').value | 0, -1, BOT_LEVELS.length - 1);
+  sky.tod = +$('time').value || 0; sky.rate = +$('clock').value || 0;      // overridden by the host's clock when joining a battle
   try { localStorage.setItem('woi-name', name); } catch { /* private mode */ }
   $('go').disabled = true; $('status').textContent = password ? 'Finding your squadron…' : '';
   try {
@@ -292,13 +304,13 @@ async function start() {
     if (humans[team] >= MAX_PER_TEAM) throw new Error('This squadron room is full (6 v 6).');
     me = addPlane(net?.id || 'solo', name, team, TEAM_TYPE[team], net?.id || 'solo', false);
     me.spawn(now()); camera.position.copy(me.pos).addScaledVector(me.fwd, -20);
-    $('lobby').style.display = 'none'; $('ui').style.display = 'block'; running = true; window.__woi.me = me; window.__woi.net = net;
+    sky.clock(); $('lobby').style.display = 'none'; $('ui').style.display = 'block'; running = true; window.__woi.me = me; window.__woi.net = net;
   } catch (err) { net?.close(); net = null; for (const p of [...planes.values()]) removePlane(p); $('status').textContent = err.message || String(err); $('go').disabled = false; }
 }
 initControls();
 $('open-controls').addEventListener('click', () => toggleControls(true));
 $('form').addEventListener('submit', e => { e.preventDefault(); start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
-window.__woi = { planes, score, isHost, camera, cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
+window.__woi = { planes, score, isHost, camera, sky, feed, cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
 frame();
 if (params.get('autostart')) start();

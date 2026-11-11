@@ -13,6 +13,16 @@ export const TEAM_TYPE = { it: 'spad', ah: 'albatros' };
 export const TEAM_NAME = { it: 'Italy', ah: 'Austria-Hungary' };
 export const TEAM_COLOR = { it: '#3d8bf0', ah: '#e2463b' };
 
+// Bot difficulty presets. skill scales turn rate and steadiness of aim; range is how far they open fire;
+// spread is how much their aim wanders; cone is how well lined up they must be before firing.
+export const BOT_LEVELS = [
+  { name: 'Rookie', skill: [0.15, 0.4], range: 100, spread: 0.11, cone: 0.9985 },
+  { name: 'Regular', skill: [0.6, 0.9], range: 150, spread: 0.05, cone: 0.997 },
+  { name: 'Ace', skill: [0.95, 1.1], range: 200, spread: 0.018, cone: 0.9955 },
+];
+export const botSettings = { level: 1 };
+export const COLLIDE_RADIUS = 4.2;     // two aircraft closer than this have hit each other
+
 export const GUN = { speed: 230, life: 1.5, interval: 0.09, damage: 7, hitRadius: 3.2 };
 const CEILING = 480, G = 9.81, KD = 0.0055;   // drag coefficient; thrust is sized so level top speed = TYPES[..].top
 const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1), ZERO = new THREE.Vector3();
@@ -35,7 +45,7 @@ export class Plane {
     this.pos.y = H(this.pos.x, this.pos.z) + 70 + Math.random() * 40;
     this.quat.setFromAxisAngle(Y, Math.atan2(-this.pos.x, -this.pos.z + 60));   // nose toward the front
     this.speed = 42; this.throttle = 0.85; this.hp = TYPES[this.type].hp; this.alive = true; this.firing = false;
-    this.lastHitBy = null; this.bank = 0; this.gunAt = now + 1.5;
+    this.lastHitBy = null; this.bank = 0; this.gunAt = now + 1.5; this.spawnedAt = now;
     this.fwd.copy(Z).applyQuaternion(this.quat); this.vdir.copy(this.fwd); this.sink = 0;
   }
   sync() { this.mesh.position.copy(this.pos); this.mesh.quaternion.copy(this.quat); this.mesh.visible = this.alive; }
@@ -87,7 +97,9 @@ export function flyPlayer(p, input, dt) {
 // ---------- bot pilot: steers a direction vector toward its goal at a limited turn rate ----------
 export function flyBot(p, planes, now, dt) {
   const t = TYPES[p.type];
-  const ai = p.ai ??= { skill: 0.6 + Math.random() * 0.35, patrol: new THREE.Vector3(), patrolAt: 0, jink: 0, aim: new THREE.Vector3() };
+  const L = BOT_LEVELS[botSettings.level] || BOT_LEVELS[1];
+  if (p.ai && p.ai.level !== botSettings.level) p.ai = null;            // difficulty changed: re-roll this pilot
+  const ai = p.ai ??= { level: botSettings.level, skill: L.skill[0] + Math.random() * (L.skill[1] - L.skill[0]), patrol: new THREE.Vector3(), patrolAt: 0, jink: 0, aim: new THREE.Vector3() };
   // nearest living enemy
   let target = null, best = 650;
   for (const o of planes.values()) if (o.alive && o.team !== p.team) { const d = o.pos.distanceTo(p.pos); if (d < best) { best = d; target = o; } }
@@ -95,14 +107,23 @@ export function flyBot(p, planes, now, dt) {
   p.firing = false;
   if (target) {
     goal.copy(target.pos).addScaledVector(target.fwd, target.speed * best / GUN.speed);   // lead the shot
-    goal.addScaledVector(ai.aim, best * 0.05 * (1.4 - ai.skill));
+    goal.addScaledVector(ai.aim, best * L.spread * (1.4 - Math.min(1, ai.skill)));
     if (now > ai.jink) { ai.jink = now + 0.6 + Math.random(); ai.aim.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5); }
     goal.sub(p.pos).normalize();
     if (best < 28) goal.y += 0.5;                                    // don't ram
-    if (best < 150 && goal.dot(p.fwd) > 0.997 && now > p.gunAt - 1) p.firing = true;
+    if (best < L.range && goal.dot(p.fwd) > L.cone && now > p.gunAt - 1) p.firing = true;
   } else {
     if (now > ai.patrolAt || ai.patrol.distanceTo(p.pos) < 60) { ai.patrolAt = now + 25; ai.patrol.set((Math.random() - 0.5) * 500, 150 + Math.random() * 120, (Math.random() - 0.5) * 800); }
     goal.copy(ai.patrol).sub(p.pos).normalize();
+  }
+  // steer clear of any aircraft about to be hit
+  // break away from any aircraft on a collision course (closing fast, under ~1.3 s from contact)
+  for (const o of planes.values()) {
+    if (o === p || !o.alive) continue;
+    const dist = v2.copy(o.pos).sub(p.pos).length(); if (dist > 120) continue;
+    v2.divideScalar(dist || 1);
+    const closing = v3.copy(p.fwd).multiplyScalar(p.speed).addScaledVector(o.fwd, -o.speed).dot(v2);
+    if (dist < 16 || (closing > 0 && dist / closing < 1.3)) { goal.copy(v2).negate(); goal.y += p.id < o.id ? 0.9 : -0.5; goal.normalize(); p.firing = p.firing && dist > 40; break; }
   }
   // stay inside the map, below the ceiling, and off the mountains
   if (Math.abs(p.pos.x) > HALF - 20 || Math.abs(p.pos.z) > HALF - 20) goal.set(-p.pos.x, 0.1, -p.pos.z).normalize();

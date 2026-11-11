@@ -133,5 +133,5 @@ const clouds = new THREE.Group(); clouds.name = 'clouds'; scene.add(clouds);
   }
 }
 
-  return { sun, SUN, clouds };
+  return { sun, hemi, clouds };
 }

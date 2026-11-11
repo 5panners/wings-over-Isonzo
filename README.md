@@ -20,6 +20,8 @@ Open http://localhost:8080. Any static file server works; the game is plain ES m
 
 - **Solo:** leave the squadron password empty. Bots fill both sides.
 - **Multiplayer:** everyone enters the same squadron password. Up to 6 pilots per side; bots fill the remaining seats up to "Pilots per side".
+- **Bots:** Rookie, Regular or Ace, or no bots at all, chosen in the lobby. In multiplayer the host's choice applies.
+- **Collisions:** two aircraft that touch are both destroyed, so don't ram.
 - **Sides:** Italy flies the SPAD VII (faster), Austria-Hungary the Albatros D.III (turns tighter).
 - **Round:** every aircraft lost gives the other side a point. First to 30 wins and the round restarts.
 
@@ -31,6 +33,11 @@ Open http://localhost:8080. Any static file server works; the game is plain ES m
 | Throttle | `Shift` up, `Ctrl` or `C` down |
 | Fire | `Space` or mouse button |
 | Sound on / off | `M` |
+| Time of day, back / forward one hour | `[` / `]` |
+
+### Day and night
+
+The sun rises in the east at 06:00 and sets in the west at 18:00; the moon is up through the night. Both light the scene and cast shadows. Pick the starting hour and how fast the clock runs in the lobby, and nudge the time in flight with `[` and `]`. In multiplayer the host's clock applies to everyone.
 
 ### Controllers
 
@@ -70,7 +77,7 @@ How the game stays in sync:
 
 Nothing here is cheat-proof; it is built for friends sharing a password.
 
-URL parameters: `name`, `pw`, `team` (`it` / `ah`), `size` (1–6), `relay`, `autostart=1`, `shadows=0`.
+URL parameters: `name`, `pw`, `team` (`it` / `ah`), `size` (1–6), `time` (start hour), `clock` (speed), `bots` (-1 none, 0 rookie, 1 regular, 2 ace), `relay`, `autostart=1`, `shadows=0`.
 
 ## Layout
 
@@ -82,6 +89,7 @@ URL parameters: `name`, `pw`, `team` (`it` / `ah`), `size` (1–6), `relay`, `au
 | `src/objects.js` | Aircraft, balloons, airfields, towns, ground-target models |
 | `src/plane.js` | Aircraft types, flight model, bot pilot |
 | `src/gamepad.js` | Controller bindings, calibration and the setup panel |
+| `src/daynight.js` | Sun, moon, stars, sky colours and the clock |
 | `src/sound.js` | Synthesised engine, wind, gun and explosion sounds |
 | `src/net.js` | Password rooms over Trystero or the WebSocket relay |
 | `src/main.js` | Game loop, guns, scoring, networking, HUD |
