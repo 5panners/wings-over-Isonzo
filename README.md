@@ -110,7 +110,8 @@ URL parameters: `name`, `pw`, `team` (`it` / `ah`), `size` (1–6), `time` (star
 | `src/plane.js` | Aircraft types, flight model, bot pilot |
 | `src/gamepad.js` | Controller bindings, calibration and the setup panel |
 | `src/daynight.js` | Sun, moon, stars, sky colours and the clock |
-| `src/sound.js` | Synthesised engine, wind, gun and explosion sounds |
+| `src/sound.js` | Engine loop playback, and synthesised wind, gun and explosion sounds |
+| `assets/engine.mp3` | Propeller engine recording used for the engine note |
 | `src/net.js` | Password rooms over Trystero or the WebSocket relay |
 | `src/main.js` | Game loop, guns, scoring, networking, HUD |
 | `server/relay.js` | Optional WebSocket relay |
