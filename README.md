@@ -105,7 +105,7 @@ URL parameters: `name`, `pw`, `team` (`it` / `ah`), `size` (1–6), `time` (star
 |---|---|
 | `index.html` | Lobby and HUD markup |
 | `src/world.js` | Map definition: terrain height function, airfields, balloon sectors, ground targets |
-| `src/terrain.js` | Terrain, river, sea, trees, sky |
+| `src/terrain.js` | Terrain, trees, sky, and the water shader for the river and sea |
 | `src/objects.js` | Aircraft, balloons, airfields, towns, ground-target models |
 | `src/plane.js` | Aircraft types, flight model, bot pilot |
 | `src/gamepad.js` | Controller bindings, calibration and the setup panel |

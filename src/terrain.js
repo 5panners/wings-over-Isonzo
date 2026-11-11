@@ -67,22 +67,83 @@ function zone(x, z, y, ny) { // classify ground
   const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })); m.receiveShadow = true; m.castShadow = true; scene.add(m);
 }
 // ---------- water ----------
+// One small shader for sea and river. Everything is computed per pixel from the world position, so the
+// geometry stays tiny (the sea is two triangles) and the cost is a handful of arithmetic per pixel:
+//  - low-poly facets: the surface is cut into triangles in the shader, each with its own gently rocking normal
+//  - sun / moon glints off the facets, and sky colour reflected at shallow viewing angles
+//  - colour runs from pale shallows to deep water (by distance offshore, or from the river banks to mid-stream)
+//  - foam lines rolling onto the beach; on the river the facets drift downstream
+const waterUniforms = {
+  uTime: { value: 0 }, uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color() },
+  uAmbSky: { value: new THREE.Color() }, uAmbGnd: { value: new THREE.Color() }, uSky: { value: new THREE.Color() },
+};
+const waterMaterial = (river, shallow, deep) => new THREE.ShaderMaterial({
+  fog: true,
+  uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), ...waterUniforms, uRiver: { value: river ? 1 : 0 }, uShallow: { value: new THREE.Color(shallow) }, uDeep: { value: new THREE.Color(deep) } },
+  vertexShader: `
+    varying vec3 vWorld; varying vec2 vUv;
+    #include <fog_pars_vertex>
+    void main() {
+      vUv = uv; vec4 wp = modelMatrix * vec4(position, 1.0); vWorld = wp.xyz;
+      vec4 mvPosition = viewMatrix * wp; gl_Position = projectionMatrix * mvPosition;
+      #include <fog_vertex>
+    }`,
+  fragmentShader: `
+    uniform float uTime, uRiver; uniform vec3 uSunDir, uSunCol, uAmbSky, uAmbGnd, uSky, uShallow, uDeep;
+    varying vec3 vWorld; varying vec2 vUv;
+    #include <fog_pars_fragment>
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    void main() {
+      vec3 toCam = cameraPosition - vWorld; float dist = length(toCam); vec3 V = toCam / dist;
+      // facets: grid cells split along the diagonal; on the river the grid slides downstream
+      vec2 q = vWorld.xz; if (uRiver > 0.5) q.y -= uTime * 9.0;
+      q = vec2(q.x + q.y * 0.5, q.y * 0.866);                                               // skew the grid so the facets are near-equilateral, not a checkerboard
+      vec2 g = q / (uRiver > 0.5 ? 3.5 : 8.0), cell = floor(g), f = fract(g);
+      float tri = step(f.x, f.y), h1 = hash(cell + tri * 17.3), h2 = hash(cell * 1.7 + tri * 5.1 + 3.0);
+      float amp = (uRiver > 0.5 ? 0.13 : 0.14) * (1.0 - smoothstep(250.0, 1000.0, dist));     // calm down far away so it does not sparkle into noise
+      vec3 n = normalize(vec3(sin(uTime * (0.8 + h1) + h1 * 6.283) * amp, 1.0, cos(uTime * (0.7 + h2) + h2 * 6.283) * amp));
+      float depth, foam;
+      if (uRiver > 0.5) {
+        float e = abs(vUv.x * 2.0 - 1.0);                                                    // 0 mid-stream, 1 at the bank
+        depth = 1.0 - smoothstep(0.35, 1.0, e);
+        foam = smoothstep(0.84, 1.0, e) * step(0.5, h2) * 0.45;                              // broken white water along the gravel
+      } else {
+        float d = vWorld.z - (545.0 + 28.0 * sin(vWorld.x / 170.0 + 1.0) - 60.0 * smoothstep(60.0, 400.0, vWorld.x));   // distance offshore
+        depth = smoothstep(0.0, 170.0, d);
+        foam = smoothstep(0.72, 1.0, sin(d * 0.5 - uTime * 1.2 + h1 * 1.6)) * (1.0 - smoothstep(2.0, 38.0, d)) * step(-14.0, d) * 0.85;   // surf lines
+      }
+      vec3 light = uSunCol * max(dot(n, uSunDir), 0.0) + mix(uAmbGnd, uAmbSky, 0.5 + 0.5 * n.y);
+      vec3 col = mix(uShallow, uDeep, depth) * (0.93 + 0.14 * h1) * light * 0.3183;
+      col = mix(col, uSky, pow(1.0 - max(dot(n, V), 0.0), 4.0) * 0.65);                      // sky reflection at grazing angles
+      col += uSunCol * pow(max(dot(reflect(-uSunDir, n), V), 0.0), 80.0) * 0.8;              // glint
+      col = mix(col, light * 0.3, foam);
+      gl_FragColor = vec4(col, 1.0);
+      #include <colorspace_fragment>
+      #include <fog_fragment>
+    }`,
+});
 {
-  const pos = [], col = [], c = new THREE.Color(), step = 7;
+  const pos = [], uv = [], step = 7;
   for (let z = -975; z < 600; z += step) {
     const q = zz => [riverX(zz) - riverHalf(zz) - 2.2, riverX(zz) + riverHalf(zz) + 2.2, riverLevel(zz) + 0.05];
     const [l0, r0, y0] = q(z), [l1, r1, y1] = q(z + step);
-    const quad = [[l0, y0, z], [l1, y1, z + step], [r1, y1, z + step], [l0, y0, z], [r1, y1, z + step], [r0, y0, z]];
-    quad.forEach((p, i) => { if (i % 3 === 0) c.set('#35c9ae').offsetHSL((rnd() - 0.5) * 0.02, 0, (rnd() - 0.5) * 0.06); pos.push(...p); col.push(c.r, c.g, c.b); });
+    pos.push(l0, y0, z, l1, y1, z + step, r1, y1, z + step, l0, y0, z, r1, y1, z + step, r0, y0, z);
+    uv.push(0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0);                    // u runs bank to bank
   }
-  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals();
-  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })); m.receiveShadow = true; scene.add(m);
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  scene.add(new THREE.Mesh(g, waterMaterial(true, '#8fe6d2', '#1fae95')));        // the emerald Isonzo
   // Adriatic
-  const sg = new THREE.PlaneGeometry(9000, 9000, 90, 90).toNonIndexed(); sg.rotateX(-Math.PI / 2);
-  const sp = sg.attributes.position, sc = [];
-  for (let i = 0; i < sp.count; i += 3) { c.set('#2f86a6').offsetHSL(0, 0, (rnd() - 0.5) * 0.05); for (let k = 0; k < 3; k++) sc.push(c.r, c.g, c.b); }
-  sg.setAttribute('color', new THREE.Float32BufferAttribute(sc, 3));
-  const sea = new THREE.Mesh(sg, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })); sea.position.y = 0; sea.receiveShadow = true; scene.add(sea);
+  const sg = new THREE.PlaneGeometry(9000, 9000); sg.rotateX(-Math.PI / 2);
+  scene.add(new THREE.Mesh(sg, waterMaterial(false, '#55d0c4', '#1c6a93')));
+}
+// call every frame: time in seconds, the shadow-casting light (sun or moon) and the ambient light
+const tmpDir = new THREE.Vector3();
+function updateWater(time, light, ambient) {
+  const u = waterUniforms; u.uTime.value = time % 10000;
+  u.uSunDir.value.copy(tmpDir.copy(light.position).sub(light.target.position).normalize());
+  u.uSunCol.value.copy(light.color).multiplyScalar(light.intensity);
+  u.uAmbSky.value.copy(ambient.color).multiplyScalar(ambient.intensity); u.uAmbGnd.value.copy(ambient.groundColor).multiplyScalar(ambient.intensity);
+  u.uSky.value.copy(scene.fog.color);
 }
 // ---------- distant ranges ----------
 for (const [R, hh, colr, sd] of [[1750, 420, '#8fa9bf', 3], [2500, 620, '#a9c0d2', 8]]) {
@@ -133,5 +194,5 @@ const clouds = new THREE.Group(); clouds.name = 'clouds'; scene.add(clouds);
   }
 }
 
-  return { sun, hemi, clouds };
+  return { sun, hemi, clouds, updateWater };
 }

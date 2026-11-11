@@ -21,7 +21,7 @@ renderer.shadowMap.enabled = new URLSearchParams(location.search).get('shadows')
  renderer.shadowMap.type = THREE.PCFShadowMap;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, 1, 1, 12000);
-const { sun, hemi } = buildTerrain(scene);
+const { sun, hemi, updateWater } = buildTerrain(scene);
 const sky = createDayNight(scene, { sun, hemi });   // sky.tod = hour of day, sky.rate = clock speed
 buildObjects(scene).setMode({ map: false, rings: false, flights: [], lineup: false });
 { const s = sun.shadow.camera; s.near = 100; s.far = 4500; }   // its width is set every frame by sky.update
@@ -190,6 +190,7 @@ function frame() {
   updateControls();
   if (me) updateSound(running && me.alive, me.power, me.speed, TYPES[me.type].top);
   updateEffects(dt);
+  updateWater(t, sun, hemi);
   updateCamera(dt);
   renderer.render(scene, camera);
   drawHud(t);
