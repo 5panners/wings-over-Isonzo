@@ -31,7 +31,7 @@ export const COLLIDE_RADIUS = 4.2;     // two aircraft closer than this have hit
 export const GUN = { speed: 230, life: 1.5, interval: 0.09, damage: 3, hitRadius: 3.2 };
 const CEILING = 480, G = 9.81, KD = 0.0055;   // drag coefficient; thrust is sized so level top speed = TYPES[..].top
 const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1), ZERO = new THREE.Vector3();
-const q1 = new THREE.Quaternion(), v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3(), m1 = new THREE.Matrix4();
+const q1 = new THREE.Quaternion(), q2 = new THREE.Quaternion(), v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3(), m1 = new THREE.Matrix4();
 
 export class Plane {
   constructor(id, name, team, type, owner, isBot = false) {
@@ -219,7 +219,7 @@ export function flyPlayer(p, input, dt) {
   if (upY > 0) q.premultiply(q1.setFromAxisAngle(Y, rightY * 1.5 * G / Math.max(p.speed, 18) * dt));
   // lift: the flight path can only bend as fast as the wings can pull, which grows with the square of speed
   const n = Math.min(4.5, (p.speed / stall) * (p.speed / stall));
-  if (n < 1) { p.sink = Math.min(11, p.sink + G * (1 - n) * dt); q.multiply(q1.setFromAxisAngle(X, 0.6 * (1 - n) * dt)); }   // stalled: sink and drop the nose
+  if (n < 1) p.sink = Math.min(11, p.sink + G * (1 - n) * dt);                                                              // stalled: sink
   else p.sink *= Math.exp(-2.5 * dt);
   if (p.pos.y > CEILING) q.multiply(q1.setFromAxisAngle(X, 0.5 * dt));                                                       // thin air above the ceiling
   q.normalize(); p.fwd.copy(Z).applyQuaternion(q);
@@ -227,6 +227,11 @@ export function flyPlayer(p, input, dt) {
   if (ang > 1e-4) p.vdir.lerp(p.fwd, Math.min(1, wmax * dt / ang)).normalize();
   // (not in Home Skies) below stall speed gravity takes over the flight path, so a stalled aircraft falls, gains speed and recovers
   if (n < 1) { p.vdir.y -= (1 - n) * 0.9 * dt; p.vdir.normalize(); }
+  // weathercock: like a dart, the nose swings to point the way the aircraft is actually moving. It acts when
+  // stalled (so the nose follows the falling flight path down) and whenever the nose is far off the path,
+  // which stops the aircraft ever sliding along tail-first.
+  const off = p.vdir.angleTo(p.fwd), swing = (n < 1 ? 1.2 * (1 - n) : 0) + (off > 0.9 ? 2.4 : 0);
+  if (swing > 0 && off > 1e-3) { q.premultiply(q1.identity().slerp(q2.setFromUnitVectors(p.fwd, p.vdir), Math.min(1, swing * dt / off))).normalize(); p.fwd.copy(Z).applyQuaternion(q); }
   // thrust, drag, weight along the flight path, and extra drag when the nose is pulled away from it
   if (p.power <= 0) p.speed -= 2.5 * dt;                                    // a stopped propeller is a brake
   p.speed += (p.power * KD * t.top * t.top - KD * p.speed * p.speed - 15.5 * p.vdir.y - Math.sin(Math.min(ang, 0.7)) * 15) * dt;   // 15: how hard pulling the nose off the flight path bleeds speed (Home Skies used 26)
