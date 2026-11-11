@@ -35,6 +35,19 @@ Open http://localhost:8080. Any static file server works; the game is plain ES m
 | Sound on / off | `M` |
 | Time of day, back / forward one hour | `[` / `]` |
 
+### Damage
+
+Modelled on Home Skies 1917. Every hit weakens the airframe and also damages one system:
+
+| System | Effect |
+|---|---|
+| Engine | Less power; destroyed means no power, and it may catch fire |
+| Wings | Sluggish roll and a higher stall speed; badly damaged wings fold in a fast dive |
+| Fuel tank | Leaks; with no fuel the engine stops |
+| Controls | Weak elevator and rudder |
+
+A burning aircraft loses airframe strength until the fire is blown out in a dive faster than top speed. When the airframe is gone the aircraft goes down, burning and out of control, and the loss is scored at that moment. The panel at the bottom left shows each system; smoke, flame and fuel vapour show it on the aircraft.
+
 ### Day and night
 
 The sun rises in the east at 06:00 and sets in the west at 18:00; the moon is up through the night. Both light the scene and cast shadows. Pick the starting hour and how fast the clock runs in the lobby, and nudge the time in flight with `[` and `]`. In multiplayer the host's clock applies to everyone.

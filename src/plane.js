@@ -36,19 +36,67 @@ export class Plane {
     this.speed = 40; this.throttle = 0.85; this.hp = TYPES[type].hp; this.alive = false; this.firing = false;
     this.respawnAt = 0; this.gunAt = 0; this.lastHitBy = null; this.lastHitAt = 0; this.seen = 0; this.bank = 0;
     this.net = null;                                  // latest network snapshot (remote planes only)
+    this.resetDamage();
     this.mesh = TYPES[type].build(true); this.mesh.visible = false;
   }
   get local() { return this.net === null; }
+  // damage state: each zone runs 0 (sound) to 1 (destroyed)
+  resetDamage() { this.dmg = { eng: 0, wing: 0, fuel: 0, ctl: 0 }; this.fuel = 1; this.fire = false; this.fireT = 0; this.dying = false; this.dyRoll = 0; this.power = 0; this.smoke = false; }
   spawn(now) {
     const f = AIRFIELDS[this.team], a = Math.random() * 6.28, r = 30 + Math.random() * 70;
     this.pos.set(f.x + Math.cos(a) * r, 0, f.z + Math.sin(a) * r);
     this.pos.y = H(this.pos.x, this.pos.z) + 70 + Math.random() * 40;
     this.quat.setFromAxisAngle(Y, Math.atan2(-this.pos.x, -this.pos.z + 60));   // nose toward the front
     this.speed = 42; this.throttle = 0.85; this.hp = TYPES[this.type].hp; this.alive = true; this.firing = false;
-    this.lastHitBy = null; this.bank = 0; this.gunAt = now + 1.5; this.spawnedAt = now;
+    this.lastHitBy = null; this.bank = 0; this.gunAt = now + 1.5; this.spawnedAt = now; this.resetDamage();
     this.fwd.copy(Z).applyQuaternion(this.quat); this.vdir.copy(this.fwd); this.sink = 0;
   }
   sync() { this.mesh.position.copy(this.pos); this.mesh.quaternion.copy(this.quat); this.mesh.visible = this.alive; }
+}
+
+// ---------- damage model (after Home Skies 1917) ----------
+// A hit costs airframe strength and also damages one system, each with its own effect on flying:
+//   engine   -> less power; destroyed = no power, and it may catch fire
+//   wings    -> sluggish roll, higher stall speed; badly damaged wings fold if dived too fast
+//   fuel     -> the tank leaks; with no fuel the engine stops
+//   controls -> weak elevator and rudder
+// Fire burns the airframe away until it is blown out in a fast dive. An aircraft with no strength
+// left is "going down": out of control and burning until it hits the ground.
+export const ZONE_TEXT = {
+  eng: ['Engine', 'Engine hit, losing power', 'Engine badly damaged'],
+  wing: ['Wings', 'Wings holed, roll is sluggish', 'Wing spars damaged, keep the speed down'],
+  fuel: ['Fuel tank', 'Fuel tank holed, losing fuel', 'Fuel pouring out'],
+  ctl: ['Controls', 'Control wires hit', 'Controls badly damaged'],
+};
+// Apply one hit to an aircraft we own. Returns messages for its pilot.
+export function takeHit(p, amount) {
+  const msgs = [], r = Math.random(), a = 0.1 + Math.random() * 0.12, D = p.dmg;
+  p.hp -= amount;
+  const zone = z => { const was = D[z]; D[z] = Math.min(1, was + a); if (was <= 0.3 && D[z] > 0.3) msgs.push(ZONE_TEXT[z][1]); else if (was <= 0.75 && D[z] > 0.75) msgs.push(ZONE_TEXT[z][2]); };
+  if (r < 0.3) { zone('eng'); if (D.eng >= 1 && !p.fire && Math.random() < 0.45) { p.fire = true; msgs.push('Engine on fire. Dive hard to blow it out.'); } }
+  else if (r < 0.65) zone('wing'); else if (r < 0.8) zone('fuel'); else if (r < 0.95) zone('ctl');
+  else { p.hp -= 8; msgs.push('Pilot wounded'); }
+  return msgs;
+}
+// Engine, fuel and fire, run every frame for aircraft we own. Returns a reason if this brings the aircraft down.
+export function systems(p, dt, msgs) {
+  const t = TYPES[p.type], D = p.dmg;
+  if (p.dying) { p.throttle = 0; D.eng = 1; p.fire = true; p.power = 0; return null; }
+  const hadFuel = p.fuel > 0;
+  p.fuel = Math.max(0, p.fuel - (0.0008 * p.throttle + 0.02 * D.fuel) * dt);
+  if (hadFuel && p.fuel <= 0) msgs.push('Out of fuel');
+  p.power = D.eng >= 1 || p.fuel <= 0 ? 0 : p.throttle * (1 - 0.7 * D.eng);
+  if (p.fire) {
+    p.hp -= 4 * dt;
+    if (p.speed > t.top * 1.08) { p.fireT += dt; if (p.fireT > 1.5) { p.fire = false; msgs.push('The fire is out.'); } } else p.fireT = 0;
+    if (p.hp <= 0) return 'Burned.';
+  }
+  if (D.wing > 0.8 && p.speed > t.top * 1.2) return 'The damaged wings folded.';
+  return null;
+}
+export function startDying(p) {
+  p.dying = true; p.dyRoll = (Math.random() < 0.5 ? -1 : 1) * (0.45 + Math.random() * 0.3);
+  p.fire = true; p.dmg.eng = 1; p.dmg.ctl = Math.max(p.dmg.ctl, 0.9); p.hp = Math.min(p.hp, 0); p.firing = false;
 }
 
 // Returns a crash reason ('ground' | 'bounds') or null.
@@ -62,14 +110,15 @@ function crashed(p) {
 // Flight model ported from Home Skies 1917 (in-flight part, standard handling).
 // input = { pitch, roll, yaw (-1..1), throttle (-1..1 change), throttleAbs (0..1 or null), fire }
 export function flyPlayer(p, input, dt) {
-  const t = TYPES[p.type], q = p.quat, stall = t.stall;
+  const t = TYPES[p.type], q = p.quat, D = p.dmg, stall = t.stall * (1 + 0.35 * D.wing);
+  if (p.dying) input = { pitch: -0.25, roll: p.dyRoll, yaw: 0, throttle: 0, throttleAbs: 0, fire: false };   // out of control
   p.throttle = input.throttleAbs != null ? input.throttleAbs : THREE.MathUtils.clamp(p.throttle + input.throttle * 0.7 * dt, 0, 1);
   // control surfaces lose authority as the aircraft slows
   const auth = THREE.MathUtils.clamp((p.speed - 6) / (stall * 1.3), 0.12, 1);
-  q.multiply(q1.setFromAxisAngle(X, -input.pitch * t.pitch * auth * dt));
-  q.multiply(q1.setFromAxisAngle(Z, input.roll * t.roll * auth * dt));
+  q.multiply(q1.setFromAxisAngle(X, -input.pitch * t.pitch * (1 - 0.6 * D.ctl) * auth * dt));
+  q.multiply(q1.setFromAxisAngle(Z, input.roll * t.roll * (1 - 0.6 * D.wing) * auth * dt));
   // rudder swings the nose and skids the flight path round with it, so it turns the aircraft flat without needing bank
-  const rud = -input.yaw * 0.8 * auth * dt;
+  const rud = -input.yaw * 0.8 * (1 - 0.6 * D.ctl) * auth * dt;
   q.multiply(q1.setFromAxisAngle(Y, rud));
   p.vdir.applyAxisAngle(v3.copy(Y).applyQuaternion(q), rud * 0.75);
   // rightY > 0 means the right wing is high (banked left)
@@ -80,6 +129,7 @@ export function flyPlayer(p, input, dt) {
   const n = Math.min(4.5, (p.speed / stall) * (p.speed / stall));
   if (n < 1) { p.sink = Math.min(11, p.sink + G * (1 - n) * dt); q.multiply(q1.setFromAxisAngle(X, 1.0 * (1 - n) * dt)); }   // stalled: sink and drop the nose
   else p.sink *= Math.exp(-2.5 * dt);
+  if (p.dying) p.sink = Math.min(34, p.sink + 7 * dt);
   if (p.pos.y > CEILING) q.multiply(q1.setFromAxisAngle(X, 0.5 * dt));                                                       // thin air above the ceiling
   q.normalize(); p.fwd.copy(Z).applyQuaternion(q);
   const ang = p.vdir.angleTo(p.fwd), wmax = G * Math.max(0.15, n) / Math.max(p.speed, 8);
@@ -87,7 +137,7 @@ export function flyPlayer(p, input, dt) {
   // (not in Home Skies) below stall speed gravity takes over the flight path, so a stalled aircraft falls, gains speed and recovers
   if (n < 1) { p.vdir.y -= (1 - n) * 0.9 * dt; p.vdir.normalize(); }
   // thrust, drag, weight along the flight path, and extra drag when the nose is pulled away from it
-  p.speed += (p.throttle * KD * t.top * t.top - KD * p.speed * p.speed - 15.5 * p.vdir.y - Math.sin(Math.min(ang, 0.7)) * 26) * dt;
+  p.speed += (p.power * KD * t.top * t.top - KD * p.speed * p.speed - 15.5 * p.vdir.y - Math.sin(Math.min(ang, 0.7)) * 26) * dt;
   p.speed = THREE.MathUtils.clamp(p.speed, 0, t.top * 1.5);
   p.pos.addScaledVector(p.vdir, p.speed * dt); p.pos.y -= p.sink * dt;
   p.firing = !!input.fire;
@@ -96,13 +146,20 @@ export function flyPlayer(p, input, dt) {
 
 // ---------- bot pilot: steers a direction vector toward its goal at a limited turn rate ----------
 export function flyBot(p, planes, now, dt) {
+  if (p.dying) {                                                    // spinning down out of control
+    p.fwd.y = Math.max(-0.85, p.fwd.y - 0.5 * dt); p.fwd.normalize(); p.bank += 2.5 * dt * Math.sign(p.dyRoll || 1);
+    p.fwd.applyAxisAngle(Y, 0.5 * dt * Math.sign(p.dyRoll || 1));
+    p.quat.setFromRotationMatrix(m1.lookAt(p.fwd, ZERO, Y)).multiply(q1.setFromAxisAngle(Z, p.bank));
+    p.speed = Math.min(TYPES[p.type].top * 1.2, p.speed + 12 * dt); p.vdir.copy(p.fwd); p.pos.addScaledVector(p.fwd, p.speed * dt); p.firing = false;
+    return crashed(p);
+  }
   const t = TYPES[p.type];
   const L = BOT_LEVELS[botSettings.level] || BOT_LEVELS[1];
   if (p.ai && p.ai.level !== botSettings.level) p.ai = null;            // difficulty changed: re-roll this pilot
   const ai = p.ai ??= { level: botSettings.level, skill: L.skill[0] + Math.random() * (L.skill[1] - L.skill[0]), patrol: new THREE.Vector3(), patrolAt: 0, jink: 0, aim: new THREE.Vector3() };
   // nearest living enemy
   let target = null, best = 650;
-  for (const o of planes.values()) if (o.alive && o.team !== p.team) { const d = o.pos.distanceTo(p.pos); if (d < best) { best = d; target = o; } }
+  for (const o of planes.values()) if (o.alive && !o.dying && o.team !== p.team) { const d = o.pos.distanceTo(p.pos); if (d < best) { best = d; target = o; } }
   const goal = v1;
   p.firing = false;
   if (target) {
@@ -135,13 +192,16 @@ export function flyBot(p, planes, now, dt) {
   if (p.pos.y < H(p.pos.x, p.pos.z) + 30) goal.y = Math.max(goal.y, 0.7);
   goal.normalize();
   // turn toward the goal
-  const rate = t.pitch * (0.55 + 0.35 * ai.skill), ang = p.fwd.angleTo(goal);
+  // damage: a dead engine means a glide down; holed wings and cut control wires slow the turn
+  const D = p.dmg, dead = p.power <= 0;
+  if (dead) { goal.y = Math.min(goal.y, -0.3); goal.normalize(); p.firing = false; }
+  const rate = t.pitch * (0.55 + 0.35 * ai.skill) * (1 - 0.5 * Math.max(D.wing, D.ctl)), ang = p.fwd.angleTo(goal);
   const turnY = v3.crossVectors(p.fwd, goal).y;
   if (ang > 1e-4) p.fwd.lerp(goal, Math.min(1, rate * dt / ang)).normalize();
   p.fwd.y = THREE.MathUtils.clamp(p.fwd.y, -0.8, 0.8); p.fwd.normalize();
   p.bank += (THREE.MathUtils.clamp(-turnY * 2.4, -1.25, 1.25) - p.bank) * Math.min(1, 4 * dt);
   p.quat.setFromRotationMatrix(m1.lookAt(p.fwd, ZERO, Y)).multiply(q1.setFromAxisAngle(Z, p.bank));
-  p.speed += ((t.top * 0.86 - 16 * p.fwd.y) - p.speed) * Math.min(1, 0.7 * dt);
+  p.speed += ((t.top * (dead ? 0.6 : 0.86 * (1 - 0.3 * D.eng)) - 16 * p.fwd.y) - p.speed) * Math.min(1, 0.7 * dt);
   p.vdir.copy(p.fwd); p.pos.addScaledVector(p.fwd, p.speed * dt);
   return crashed(p);
 }

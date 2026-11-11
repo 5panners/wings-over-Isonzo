@@ -4,7 +4,7 @@ import { buildTerrain } from './terrain.js';
 import { createDayNight } from './daynight.js';
 import { buildObjects } from './objects.js';
 import { AIRFIELDS, SECTORS, riverX, HALF, H } from './world.js';
-import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, BOT_LEVELS, botSettings, COLLIDE_RADIUS, flyPlayer, flyBot, flyRemote } from './plane.js';
+import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, BOT_LEVELS, botSettings, COLLIDE_RADIUS, ZONE_TEXT, takeHit, systems, startDying, flyPlayer, flyBot, flyRemote } from './plane.js';
 import { connect } from './net.js';
 import { startSound, updateSound, toggleMute, isMuted, gunSound, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
 import { pollGamepad, updateControls, initControls, toggleControls, controlsOpen } from './gamepad.js';
@@ -64,22 +64,33 @@ function onKill(victimId, killerId, collidedWith) {
   say(collidedWith ? `${label(victimId)} collided with ${label(collidedWith)}` : killerId && planes.has(killerId) ? `${label(killerId)} shot down ${label(victimId)}` : `${label(victimId)} crashed`);
   if (isHost() && !roundEndAt) { score[other(v.team)]++; if (score[other(v.team)] >= SCORE_LIMIT) roundEndAt = now() + 8; }
 }
-function die(p, by, collidedWith) {          // only ever called by the peer that owns p
-  if (!p.alive) return;
-  const t = now(), killer = collidedWith ? null : by || (t - p.lastHitAt < 10 ? p.lastHitBy : null);
-  p.alive = false; p.firing = false; p.respawnAt = t + RESPAWN; explode(p.pos);
+// The functions below are only ever called by the peer that owns p.
+function announce(p, by, collidedWith) {      // credit the loss: whoever hit it last, within half a minute
+  const killer = collidedWith ? null : by || (now() - p.lastHitAt < 30 ? p.lastHitBy : null);
   onKill(p.id, killer, collidedWith); net?.send({ t: 'k', v: p.id, by: killer, c: collidedWith });
 }
-function damage(p, amount, by) {
+function die(p, by, collidedWith) {           // destroyed outright: crash, collision, or a falling wreck reaching the ground
   if (!p.alive) return;
-  p.hp -= amount; p.lastHitBy = by; p.lastHitAt = now(); if (p === me) hitTakenSound();
-  if (p.hp <= 0) die(p, by);
+  if (!p.dying) announce(p, by, collidedWith);                    // a wreck that was already going down has been counted
+  p.alive = false; p.dying = false; p.firing = false; p.respawnAt = now() + RESPAWN; explode(p.pos);
+}
+function goDown(p, by, why) {                 // fatally hit: falls burning and out of control until it hits the ground
+  if (!p.alive || p.dying) return;
+  announce(p, by); startDying(p);
+  if (p === me) say('Going down! ' + why);
+}
+function damage(p, amount, by) {
+  if (!p.alive || p.dying) return;
+  p.lastHitBy = by; p.lastHitAt = now();
+  const msgs = takeHit(p, amount);
+  if (p === me) { hitTakenSound(); msgs.forEach(say); }
+  if (p.hp <= 0) goDown(p, by, 'Shot to pieces.');
 }
 
 // ---------------- networking ----------------
 function packState() {
   const e = [];
-  for (const p of planes.values()) if (p.local) e.push([p.id, p.name, p.team, p.type, +p.pos.x.toFixed(1), +p.pos.y.toFixed(1), +p.pos.z.toFixed(1), +p.quat.x.toFixed(3), +p.quat.y.toFixed(3), +p.quat.z.toFixed(3), +p.quat.w.toFixed(3), +p.speed.toFixed(1), Math.round(p.hp), (p.alive ? 1 : 0) | (p.firing ? 2 : 0) | (p.isBot ? 4 : 0)]);
+  for (const p of planes.values()) if (p.local) e.push([p.id, p.name, p.team, p.type, +p.pos.x.toFixed(1), +p.pos.y.toFixed(1), +p.pos.z.toFixed(1), +p.quat.x.toFixed(3), +p.quat.y.toFixed(3), +p.quat.z.toFixed(3), +p.quat.w.toFixed(3), +p.speed.toFixed(1), Math.round(p.hp), (p.alive ? 1 : 0) | (p.firing ? 2 : 0) | (p.isBot ? 4 : 0) | (p.dying ? 8 : 0) | (p.fire ? 16 : 0) | (p.dmg.eng > 0.3 ? 32 : 0)]);
   const m = { t: 's', e };
   if (isHost()) { m.sc = [score.it, score.ah]; m.n = teamSize; m.d = [+sky.tod.toFixed(3), sky.rate]; m.b = botSettings.level; }
   return m;
@@ -95,7 +106,7 @@ function onMessage(m, from) {
       if (!p) { p = addPlane(id, String(name).slice(0, 20), team, type, from, !!(flags & 4)); p.pos.set(x, y, z); p.quat.set(qx, qy, qz, qw); }
       const n = p.net ??= { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), fwd: new THREE.Vector3() };
       n.pos.set(x, y, z); n.quat.set(qx, qy, qz, qw).normalize(); n.fwd.copy(Zax).applyQuaternion(n.quat); n.speed = speed; n.at = t;
-      const alive = !!(flags & 1);
+      const alive = !!(flags & 1); p.dying = !!(flags & 8); p.fire = !!(flags & 16); p.smoke = !!(flags & 32);
       if (p.alive && !alive) explode(p.pos);
       if (!p.alive && alive) { p.pos.copy(n.pos); p.quat.copy(n.quat); p.spawnedAt = t; }
       p.owner = from; p.alive = alive; p.firing = !!(flags & 2); p.hp = hp; p.speed = speed; p.seen = t; p.team = team;
@@ -155,7 +166,7 @@ function frame() {
   const t = now(), dt = Math.min(0.05, t - last); last = t;
   if (running && !window.__woi.freeze) step(t, dt);   // freeze: test hook to hold the simulation still
   updateControls();
-  if (me) updateSound(running && me.alive, me.throttle, me.speed, TYPES[me.type].top);
+  if (me) updateSound(running && me.alive, me.power, me.speed, TYPES[me.type].top);
   updateEffects(dt);
   updateCamera(dt);
   renderer.render(scene, camera);
@@ -168,9 +179,12 @@ function step(t, dt) {
       flyRemote(p, t, dt);
       if (t - p.seen > 4) { removePlane(p); continue; }
     } else if (p.alive) {
+      const msgs = [], why = systems(p, dt, msgs);                  // engine, fuel, fire
+      if (p === me) msgs.forEach(say);
+      if (why) goDown(p, null, why);
       const crash = p === me ? flyPlayer(p, readInput(), dt) : flyBot(p, planes, t, dt);
       if (crash) die(p, null);
-      else if (t - p.spawnedAt > 3) {                           // mid-air collision: each owner destroys its own aircraft
+      else if (t - p.spawnedAt > 3 && !p.dying) {                           // mid-air collision: each owner destroys its own aircraft
         for (const o of planes.values()) if (o !== p && o.alive && t - (o.spawnedAt || 0) > 3 && o.pos.distanceToSquared(p.pos) < COLLIDE_RADIUS * COLLIDE_RADIUS) { die(p, null, o.id); if (o.local) die(o, null, p.id); break; }
       }
     } else if (t > p.respawnAt && !roundEndAt) p.spawn(t);
@@ -181,7 +195,12 @@ function step(t, dt) {
       gunSound(p.pos.distanceTo(camera.position), p === me);
       bullets.push({ p: p.pos.clone().addScaledVector(p.fwd, 3.5), v: V.clone(), life: GUN.life, by: p.id, team: p.team, real: p.local });
     }
-    if (p.alive && p.hp < 45 && Math.random() < dt * 14) puff(p.pos, '#3a3735', 0.9, 1.3, 1.5, 0.6);
+    if (p.alive) {                                             // smoke, flame and fuel vapour show the damage
+      const eng = p.local ? p.dmg.eng : (p.smoke ? 0.5 : 0), k = p === me ? 0.5 : 1;   // our own trail is kept small so it does not blot out the view
+      if (eng > 0.3 && Math.random() < dt * (eng > 0.75 ? 16 : 8)) puff(p.pos, eng > 0.75 ? '#2b2927' : '#8d8a86', 0.9 * k, 1.4 * k, 1.5, 0.6);
+      if (p.fire && Math.random() < dt * 22) puff(p.pos, Math.random() < 0.6 ? '#ff8a2a' : '#2b2927', 1.1 * k, 0.7 * k, 2.5, 0.9);
+      if (p.local && p.dmg.fuel > 0.3 && p.fuel > 0 && Math.random() < dt * 9) puff(p.pos, '#e9eef2', 0.6, 1.0, 0.5, 0.4);
+    }
     p.sync();
   }
   // bullets
@@ -190,7 +209,7 @@ function step(t, dt) {
     V.copy(b.v).multiplyScalar(dt);
     let hit = null;
     if (b.real) for (const p of planes.values()) {
-      if (!p.alive || p.team === b.team) continue;
+      if (!p.alive || p.dying || p.team === b.team) continue;
       // closest approach of this frame's bullet segment to the plane
       V2.copy(p.pos).sub(b.p); const u = THREE.MathUtils.clamp(V2.dot(V) / V.lengthSq(), 0, 1);
       if (V2.addScaledVector(V, -u).lengthSq() < GUN.hitRadius * GUN.hitRadius) { hit = p; break; }
@@ -270,10 +289,16 @@ function drawHud(t) {
   // text panels
   let it = 0, ah = 0; for (const p of planes.values()) p.team === 'it' ? it++ : ah++;
   $('score').innerHTML = `<span style="color:${TEAM_COLOR.it}">Italy ${score.it}</span><small>first to ${SCORE_LIMIT} · ${it} v ${ah}</small><span style="color:${TEAM_COLOR.ah}">${score.ah} Austria-Hungary</span>`;
-  $('stats').innerHTML = `<b>${TYPES[me.type].name}</b><br>Speed ${Math.round(me.speed * 3.6)} km/h<br>Altitude ${Math.round(me.pos.y * 10)} m<br>Throttle ${Math.round(me.throttle * 100)}%<br>Airframe <span style="color:${me.hp < 45 ? '#ff7a5c' : '#fff'}">${Math.max(0, Math.round(me.hp))}%</span>`;
+  const bar = (v, good) => { const c = good ? (v > 0.5 ? '#9fd08a' : v > 0.2 ? '#f0c05a' : '#ff7a5c') : (v < 0.3 ? '#9fd08a' : v < 0.75 ? '#f0c05a' : '#ff7a5c'); return `<i class="bar"><i style="width:${Math.round(Math.max(0, Math.min(1, good ? v : 1 - v)) * 100)}%;background:${c}"></i></i>`; };
+  $('stats').innerHTML = `<b>${TYPES[me.type].name}</b><br>Speed ${Math.round(me.speed * 3.6)} km/h<br>Altitude ${Math.round(me.pos.y * 10)} m<br>Throttle ${Math.round(me.throttle * 100)}%`
+    + `<table><tr><td>Airframe</td><td>${bar(me.hp / TYPES[me.type].hp, true)}</td></tr><tr><td>Fuel</td><td>${bar(me.fuel, true)}</td></tr>`
+    + Object.keys(ZONE_TEXT).map(z => `<tr><td>${ZONE_TEXT[z][0]}</td><td>${bar(me.dmg[z], false)}</td></tr>`).join('') + '</table>'
+    + (me.fire ? '<b style="color:#ff7a5c">ON FIRE</b>' : '');
   $('feed').innerHTML = feed.filter(f => t - f.at < 9).map(f => `<div>${f.text}</div>`).join('');
   const over = Math.max(score.it, score.ah) >= SCORE_LIMIT;
   $('msg').innerHTML = over ? `${score.it > score.ah ? 'Italy' : 'Austria-Hungary'} wins the round<small>next round starting…</small>`
+    : me.alive && me.dying ? 'Going down<small>out of control</small>'
+    : me.alive && me.fire ? 'On fire<small>dive hard to blow it out</small>'
     : !me.alive ? `Shot down<small>back in the air in ${Math.max(0, Math.ceil(me.respawnAt - t))} s</small>`
     : oobSince ? 'Turn back<small>you are leaving the combat area</small>'
     : me.speed < TYPES[me.type].stall * 1.05 ? 'Stall<small>nose down, throttle up</small>' : '';
@@ -311,6 +336,6 @@ initControls();
 $('open-controls').addEventListener('click', () => toggleControls(true));
 $('form').addEventListener('submit', e => { e.preventDefault(); start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
-window.__woi = { planes, score, isHost, camera, sky, feed, cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
+window.__woi = { planes, score, isHost, camera, sky, feed, hit: (p, d) => damage(p, d, null), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
 frame();
 if (params.get('autostart')) start();
