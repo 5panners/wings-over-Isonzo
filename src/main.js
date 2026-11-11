@@ -79,18 +79,26 @@ function onKill(victimId, killerId, collidedWith) {
   if (isHost() && !roundEndAt) { score[other(v.team)]++; if (score[other(v.team)] >= SCORE_LIMIT) roundEndAt = now() + 8; }
 }
 // The functions below are only ever called by the peer that owns p.
-function announce(p, by, collidedWith) {      // credit the loss: whoever hit it last, within half a minute
-  const killer = collidedWith ? null : by || (now() - p.lastHitAt < 30 ? p.lastHitBy : null);
+// Tell everyone an aircraft is lost. Returns who is credited (an aircraft id) or null.
+function announce(p, by, collidedWith, credit = true) {
+  // credit goes to whoever delivered the fatal damage; for fire or structural failure, whoever hit it last within half a minute
+  const killer = !credit || collidedWith ? null : by || (now() - p.lastHitAt < 30 ? p.lastHitBy : null);
   onKill(p.id, killer, collidedWith); net?.send({ t: 'k', v: p.id, by: killer, c: collidedWith });
+  return killer;
 }
 function die(p, by, collidedWith) {           // destroyed outright: crash, collision, or a falling wreck reaching the ground
   if (!p.alive) return;
-  if (!p.dying) announce(p, by, collidedWith);                    // a wreck that was already going down has been counted
+  if (!p.dying) {                                                 // a wreck that was already going down has been counted
+    // flew into the ground, a balloon or another aircraft without a fatal hit from the enemy: that is a crash, whoever shot at it earlier
+    announce(p, null, collidedWith, false);
+    p.fate = collidedWith === 'balloon' ? 'Flew into a balloon' : collidedWith ? 'Collided' : 'Crashed';
+  }
   p.alive = false; p.dying = false; p.firing = false; p.respawnAt = now() + RESPAWN; explode(p.pos);
 }
 function goDown(p, by, why) {                 // fatally hit: falls burning and out of control until it hits the ground
   if (!p.alive || p.dying) return;
-  announce(p, by); startDying(p);
+  const killer = announce(p, by); startDying(p);
+  p.fate = killer && planes.has(killer) ? 'Shot down by ' + planes.get(killer).name.replace(/[<&]/g, '') : 'Crashed';
   if (p === me) say('Going down! ' + why);
 }
 function damage(p, amount, by, where) {
@@ -373,7 +381,7 @@ function drawHud(t) {
     : me.alive && me.dying ? 'Going down<small>out of control</small>'
     : me.alive && me.onGround ? (me.throttle < 0.5 ? 'On the runway<small>open the throttle (Shift)</small>' : me.speed > TYPES[me.type].stall * 1.1 ? 'Flying speed<small>ease the stick back</small>' : '')
     : me.alive && me.fire ? 'On fire<small>dive hard to blow it out</small>'
-    : !me.alive ? `Shot down<small>back in the air in ${Math.max(0, Math.ceil(me.respawnAt - t))} s</small>`
+    : !me.alive ? `${me.fate || 'Crashed'}<small>back in the air in ${Math.max(0, Math.ceil(me.respawnAt - t))} s</small>`
     : oobSince ? 'Turn back<small>you are leaving the combat area</small>'
     : me.speed < TYPES[me.type].stall * 1.05 ? 'Stall<small>nose down, throttle up</small>' : '';
   $('netinfo').textContent = net ? `${net.kind === 'p2p' ? 'peer-to-peer' : 'relay'} · ${net.peers.size + 1} pilot${net.peers.size ? 's' : ''} online${isHost() ? ' · you host the bots' : ''} · ${sky.clock()}` : 'solo flight · ' + sky.clock();
@@ -414,6 +422,6 @@ $('camease').addEventListener('input', e => setCamEase(e.target.value / 100));
 $('open-controls').addEventListener('click', () => toggleControls(true));
 $('form').addEventListener('submit', e => { e.preventDefault(); start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
-window.__woi = { explode, flashes, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
+window.__woi = { explode, flashes, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
 frame();
 if (params.get('autostart')) start();
