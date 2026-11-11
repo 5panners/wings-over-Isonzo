@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { buildTerrain } from './terrain.js';
 import { buildObjects } from './objects.js';
-import { AIRFIELDS, SECTORS, riverX, HALF } from './world.js';
+import { AIRFIELDS, SECTORS, riverX, HALF, H } from './world.js';
 import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, flyPlayer, flyBot, flyRemote } from './plane.js';
 import { connect } from './net.js';
 import { pollGamepad, updateControls, initControls, toggleControls, controlsOpen } from './gamepad.js';
@@ -213,15 +213,16 @@ function updateEffects(dt) {
   puffMesh.count = n; puffMesh.instanceMatrix.needsUpdate = true; if (puffMesh.instanceColor) puffMesh.instanceColor.needsUpdate = true;
 }
 
-const camUp = new THREE.Vector3(0, 1, 0);
+// Chase camera as in Home Skies 1917: follows behind and above, and always keeps the horizon level.
 function updateCamera(dt) {
+  camera.up.set(0, 1, 0);
   if (!me) { const a = now() * 0.03; camera.position.set(Math.sin(a) * 900, 380, 300 + Math.cos(a) * 700); camera.lookAt(0, 40, -80); }
   else if (me.alive) {
-    V.copy(me.pos).addScaledVector(me.fwd, -17).add(V2.set(0, 1, 0).applyQuaternion(me.quat).multiplyScalar(2).add(S3.set(0, 3.2, 0)));
-    camera.position.lerp(V, 1 - Math.exp(-9 * dt));
-    camUp.lerp(V2.set(0, 1, 0).applyQuaternion(me.quat).multiplyScalar(0.45).add(S3.set(0, 0.55, 0)), 1 - Math.exp(-5 * dt)).normalize();
-    camera.up.copy(camUp); camera.lookAt(V.copy(me.pos).addScaledVector(me.fwd, 40));
-  } else { camera.up.set(0, 1, 0); camera.lookAt(me.pos); }
+    V.copy(me.pos).addScaledVector(me.fwd, -14); V.y += 3.6; V.addScaledVector(V2.set(0, 1, 0).applyQuaternion(me.quat), 1.2);
+    V.y = Math.max(V.y, H(V.x, V.z) + 1.5);                       // never let the camera sink into a hillside
+    camera.position.lerp(V, 1 - Math.exp(-7 * dt));
+    camera.lookAt(V.copy(me.pos).addScaledVector(me.fwd, 25));
+  } else camera.lookAt(me.pos);
   // keep the shadow map centred on the action
   const c = me ? me.pos : V.set(0, 0, 0);
   sun.target.position.set(Math.round(c.x / 20) * 20, 0, Math.round(c.z / 20) * 20); sun.position.copy(sun.target.position).addScaledVector(SUN, 2200); sun.target.updateMatrixWorld();
@@ -262,7 +263,7 @@ function drawHud(t) {
   $('msg').innerHTML = over ? `${score.it > score.ah ? 'Italy' : 'Austria-Hungary'} wins the round<small>next round starting…</small>`
     : !me.alive ? `Shot down<small>back in the air in ${Math.max(0, Math.ceil(me.respawnAt - t))} s</small>`
     : oobSince ? 'Turn back<small>you are leaving the combat area</small>'
-    : me.speed < 20 ? 'Stall<small>nose down, throttle up</small>' : '';
+    : me.speed < TYPES[me.type].stall * 1.05 ? 'Stall<small>nose down, throttle up</small>' : '';
   $('netinfo').textContent = net ? `${net.kind === 'p2p' ? 'peer-to-peer' : 'relay'} · ${net.peers.size + 1} pilot${net.peers.size ? 's' : ''} online${isHost() ? ' · you host the bots' : ''}` : 'solo flight';
 }
 
@@ -294,6 +295,6 @@ initControls();
 $('open-controls').addEventListener('click', () => toggleControls(true));
 $('form').addEventListener('submit', e => { e.preventDefault(); start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
-window.__woi = { planes, score, isHost, sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
+window.__woi = { planes, score, isHost, camera, sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
 frame();
 if (params.get('autostart')) start();

@@ -43,6 +43,15 @@ Gamepads, joysticks, throttles and rudder pedals work alongside the keyboard. Op
 
 Settings are saved in the browser.
 
+### Handling
+
+The flight model and chase camera come from Home Skies 1917:
+
+- The aircraft turns by banking; release the stick and the wings level themselves.
+- The flight path follows the nose only as fast as the wings can pull, so hauling back hard bleeds speed.
+- Below stall speed the aircraft sinks and drops its nose; let it dive to recover.
+- The camera sits behind and above and always keeps the horizon level.
+
 Add `?shadows=0` to the URL on slow machines.
 
 ## Multiplayer
