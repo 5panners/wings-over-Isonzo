@@ -63,8 +63,6 @@ export function flyPlayer(p, input, dt) {
   const rightY = -v1.copy(X).applyQuaternion(q).y, upY = v2.copy(Y).applyQuaternion(q).y;
   // a banked aircraft turns: coordinated-turn rate g * bank / speed
   if (upY > 0) q.premultiply(q1.setFromAxisAngle(Y, rightY * 1.5 * G / Math.max(p.speed, 18) * dt));
-  // wings level themselves when the stick is released
-  if (Math.abs(input.roll) < 0.05 && upY > 0.2) q.multiply(q1.setFromAxisAngle(Z, rightY * 1.1 * dt));
   // lift: the flight path can only bend as fast as the wings can pull, which grows with the square of speed
   const n = Math.min(4.5, (p.speed / stall) * (p.speed / stall));
   if (n < 1) { p.sink = Math.min(11, p.sink + G * (1 - n) * dt); q.multiply(q1.setFromAxisAngle(X, 1.0 * (1 - n) * dt)); }   // stalled: sink and drop the nose

@@ -47,7 +47,7 @@ Settings are saved in the browser.
 
 The flight model and chase camera come from Home Skies 1917:
 
-- The aircraft turns by banking; release the stick and the wings level themselves.
+- The aircraft turns by banking and holds the bank you set; there is no self-levelling.
 - The flight path follows the nose only as fast as the wings can pull, so hauling back hard bleeds speed.
 - Below stall speed the aircraft sinks and drops its nose; let it dive to recover.
 - The camera sits behind and above and always keeps the horizon level.
