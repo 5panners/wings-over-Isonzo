@@ -4,7 +4,7 @@ import { buildTerrain } from './terrain.js';
 import { createDayNight } from './daynight.js';
 import { buildObjects } from './objects.js';
 import { AIRFIELDS, SECTORS, riverX, HALF, H } from './world.js';
-import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, BOT_LEVELS, botSettings, COLLIDE_RADIUS, ZONE_TEXT, takeHit, systems, startDying, flyPlayer, flyBot, flyRemote } from './plane.js';
+import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, BOT_LEVELS, botSettings, COLLIDE_RADIUS, ZONE_TEXT, zoneAt, takeHit, systems, startDying, flyPlayer, flyBot, flyRemote } from './plane.js';
 import { connect } from './net.js';
 import { startSound, updateSound, toggleMute, isMuted, gunSound, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
 import { pollGamepad, updateControls, initControls, toggleControls, controlsOpen } from './gamepad.js';
@@ -18,13 +18,13 @@ const other = t => (t === 'it' ? 'ah' : 'it');
 const renderer = new THREE.WebGLRenderer({ canvas: $('c'), antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = new URLSearchParams(location.search).get('shadows') !== '0';   // ?shadows=0 for slow machines
- renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+ renderer.shadowMap.type = THREE.PCFShadowMap;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, 1, 1, 12000);
 const { sun, hemi } = buildTerrain(scene);
 const sky = createDayNight(scene, { sun, hemi });   // sky.tod = hour of day, sky.rate = clock speed
 buildObjects(scene).setMode({ map: false, rings: false, flights: [], lineup: false });
-{ const s = sun.shadow.camera; s.left = s.bottom = -260; s.right = s.top = 260; s.near = 100; s.far = 4500; s.updateProjectionMatrix(); }
+{ const s = sun.shadow.camera; s.near = 100; s.far = 4500; }   // its width is set every frame by sky.update
 const hud = $('hud'), ctx = hud.getContext('2d');
 function resize() {
   renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
@@ -80,10 +80,10 @@ function goDown(p, by, why) {                 // fatally hit: falls burning and 
   announce(p, by); startDying(p);
   if (p === me) say('Going down! ' + why);
 }
-function damage(p, amount, by) {
+function damage(p, amount, by, where) {
   if (!p.alive || p.dying) return;
   p.lastHitBy = by; p.lastHitAt = now();
-  const msgs = takeHit(p, amount);
+  const msgs = takeHit(p, amount, where);
   if (p === me) { hitTakenSound(); msgs.forEach(say); }
   if (p.hp <= 0) goDown(p, by, 'Shot to pieces.');
 }
@@ -117,7 +117,7 @@ function onMessage(m, from) {
       if (m.d) { sky.rate = +m.d[1] || 0; const off = Math.abs(sky.tod - m.d[0]); if (Math.min(off, 24 - off) > 0.03) sky.tod = +m.d[0] || 0; }   // the host's clock is everyone's clock
     }
   } else if (m.t === 'x') {                                   // someone's bullet hit a plane we own
-    const p = planes.get(m.to); if (p && p.local) damage(p, Math.min(+m.d || 0, 25), m.by);
+    const p = planes.get(m.to); if (p && p.local) damage(p, Math.min(+m.d || 0, 25), m.by, ['eng', 'wingL', 'wingR', 'tail', 'fuel', 'pilot', 'body'].includes(m.z) ? m.z : undefined);
   } else if (m.t === 'k') onKill(m.v, m.by, m.c);
 }
 function onLeave(id) { for (const p of [...planes.values()]) if (p.owner === id && !p.local) { if (!p.isBot) say(`${label(p.id)} left`); removePlane(p); } }
@@ -140,7 +140,7 @@ function manageBots() {
 
 // ---------------- input ----------------
 const keys = new Set(); let mouseFire = false;
-addEventListener('keydown', e => { if (e.code === 'Escape' && (running || controlsOpen())) return toggleControls(); if (controlsOpen()) return; startSound(); if (e.code === 'KeyM' && running) say(toggleMute() ? 'Sound off' : 'Sound on');
+addEventListener('keydown', e => { if (e.code === 'Escape' && (running || controlsOpen())) return toggleControls(); if (controlsOpen()) return; startSound(); if (running && (e.code === 'Comma' || e.code === 'Period')) { setCamEase(camEase + (e.code === 'Period' ? 0.1 : -0.1)); say(`Camera smoothing ${Math.round(camEase * 100)}%`); } if (e.code === 'KeyM' && running) say(toggleMute() ? 'Sound off' : 'Sound on');
   if (running && (e.code === 'BracketLeft' || e.code === 'BracketRight')) { if (isHost()) { sky.tod = (sky.tod + (e.code === 'BracketRight' ? 1 : 23)) % 24; say('Time set to ' + sky.clock()); } else say('Only the host can change the time'); }
   keys.add(e.code); if (running && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); });
 addEventListener('keyup', e => keys.delete(e.code));
@@ -180,7 +180,7 @@ function step(t, dt) {
       flyRemote(p, t, dt);
       if (t - p.seen > 4) { removePlane(p); continue; }
     } else if (p.alive) {
-      const msgs = [], why = systems(p, dt, msgs);                  // engine, fuel, fire
+      const msgs = [], why = systems(p, dt, msgs, t);                  // engine, fuel, fire
       if (p === me) msgs.forEach(say);
       if (why) goDown(p, null, why);
       const crash = p === me ? flyPlayer(p, readInput(), dt) : flyBot(p, planes, t, dt);
@@ -198,7 +198,8 @@ function step(t, dt) {
     }
     if (p.alive) {                                             // smoke, flame and fuel vapour show the damage
       const eng = p.local ? p.dmg.eng : (p.smoke ? 0.5 : 0), k = p === me ? 0.5 : 1;   // our own trail is kept small so it does not blot out the view
-      if (eng > 0.3 && Math.random() < dt * (eng > 0.75 ? 16 : 8)) puff(p.pos, eng > 0.75 ? '#2b2927' : '#8d8a86', 0.9 * k, 1.4 * k, 1.5, 0.6);
+      if (eng > 0.3 && Math.random() < dt * 14) puff(p.pos, '#2a1c10', 0.45 * k, 0.9, -1.5, 0.3);                          // thin dark stream of oil
+      if (eng > 0.75 && Math.random() < dt * 14) puff(p.pos, '#2b2927', 1.0 * k, 1.5 * k, 1.5, 0.6);                      // heavy smoke
       if (p.fire && Math.random() < dt * 22) puff(p.pos, Math.random() < 0.6 ? '#ff8a2a' : '#2b2927', 1.1 * k, 0.7 * k, 2.5, 0.9);
       if (p.local && p.dmg.fuel > 0.3 && p.fuel > 0 && Math.random() < dt * 9) puff(p.pos, '#e9eef2', 0.6, 1.0, 0.5, 0.4);
     }
@@ -208,17 +209,24 @@ function step(t, dt) {
   for (let i = bullets.length - 1; i >= 0; i--) {
     const b = bullets[i]; b.life -= dt;
     V.copy(b.v).multiplyScalar(dt);
-    let hit = null;
+    let hit = null, where = null;
     if (b.real) for (const p of planes.values()) {
       if (!p.alive || p.dying || p.team === b.team) continue;
       // closest approach of this frame's bullet segment to the plane
       V2.copy(p.pos).sub(b.p); const u = THREE.MathUtils.clamp(V2.dot(V) / V.lengthSq(), 0, 1);
-      if (V2.addScaledVector(V, -u).lengthSq() < GUN.hitRadius * GUN.hitRadius) { hit = p; break; }
+      if (V2.addScaledVector(V, -u).lengthSq() < GUN.hitRadius * GUN.hitRadius) {
+        hit = p;
+        // where it struck: a point between where the round entered the aircraft's space and its closest pass,
+        // in the aircraft's own frame, so shots from astern find the tail and head-on shots the engine
+        const back = Math.sqrt(Math.max(0, GUN.hitRadius * GUN.hitRadius - V2.lengthSq())) * Math.random();
+        V2.copy(b.p).addScaledVector(V, u).addScaledVector(S3.copy(V).normalize(), -back).sub(p.pos).applyQuaternion(Q.copy(p.quat).invert());
+        where = zoneAt(V2.x, V2.z); break;
+      }
     }
     b.p.add(V);
     if (hit) {
       puff(hit.pos, '#ffd36b', 0.8, 0.25, 0, 2);
-      if (hit.local) damage(hit, GUN.damage, b.by); else net?.send({ t: 'x', to: hit.id, by: b.by, d: GUN.damage }, hit.owner);
+      if (hit.local) damage(hit, GUN.damage, b.by, where); else net?.send({ t: 'x', to: hit.id, by: b.by, d: GUN.damage, z: where }, hit.owner);
       if (b.by === me?.id) { hitFlash = t + 0.12; hitScoredSound(); }
     }
     if (hit || b.life <= 0) bullets.splice(i, 1);
@@ -247,21 +255,32 @@ function updateEffects(dt) {
 }
 
 // Chase camera as in Home Skies 1917: follows behind and above, and always keeps the horizon level.
+const camLook = new THREE.Vector3();
+let camEase = 0.45;                    // 0 = camera locked tight to the aircraft, 1 = very lazy
+try { const v = parseFloat(localStorage.getItem('woi-camease')); if (v >= 0 && v <= 1) camEase = v; } catch { /* no storage */ }
+function setCamEase(v) { camEase = THREE.MathUtils.clamp(v, 0, 1); try { localStorage.setItem('woi-camease', camEase); } catch { /* no storage */ } $('camease').value = Math.round(camEase * 100); }
 function updateCamera(dt) {
   camera.up.set(0, 1, 0);
   if (!me) { const a = now() * 0.03; camera.position.set(Math.sin(a) * 900, 380, 300 + Math.cos(a) * 700); camera.lookAt(0, 40, -80); }
   else if (me.alive) {
     V.copy(me.pos).addScaledVector(me.fwd, -14); V.y += 4.6;       // offset uses world up only, so rolling never moves the view
     V.y = Math.max(V.y, H(V.x, V.z) + 1.5);                       // never let the camera sink into a hillside
-    camera.position.lerp(V, 1 - Math.exp(-7 * dt));
-    camera.lookAt(V.copy(me.pos).addScaledVector(me.fwd, 25));
-  } else camera.lookAt(me.pos);
-  // advance the clock; this also keeps the shadow map centred on the action
+    // both where the camera sits and where it looks ease toward their targets; camEase sets how lazily
+    const k = 16 * Math.pow(0.12, camEase);
+    if (camera.position.distanceToSquared(V) > 150 * 150) { camera.position.copy(V); camLook.copy(me.pos).addScaledVector(me.fwd, 25); }   // respawned: jump, don't swoop
+    camera.position.lerp(V, 1 - Math.exp(-k * dt));
+    camLook.lerp(V.copy(me.pos).addScaledVector(me.fwd, 25), 1 - Math.exp(-k * 1.5 * dt));
+    camera.lookAt(camLook);
+  } else camera.lookAt(camLook.lerp(me.pos, 1 - Math.exp(-3 * dt)));
+  // advance the clock; this also keeps the shadow map centred on the aircraft, and tight around it when low
+  // so that its shadow on the ground is crisp
   const c = me ? me.pos : V.set(0, 0, 0);
-  sky.update(dt, c, camera);
+  sky.update(dt, c, camera, me ? THREE.MathUtils.clamp(55 + (me.pos.y - H(me.pos.x, me.pos.z)) * 2, 60, 300) : 300);
 }
 
 // ---------------- HUD ----------------
+// fixed oil-spatter pattern: [x, y, size, squash, tilt], kept away from the gunsight in the middle
+const OIL = Array.from({ length: 16 }, (_, i) => { const a = i * 2.4, r = 0.24 + ((i * 37) % 10) / 40; return [0.5 + Math.cos(a) * r * 1.25, 0.5 + Math.sin(a) * r, 0.025 + ((i * 53) % 7) / 140, 0.5 + ((i * 29) % 5) / 8, a]; });
 function drawHud(t) {
   const W = hud.width, Hh = hud.height; ctx.clearRect(0, 0, W, Hh);
   if (!me) return;
@@ -279,6 +298,11 @@ function drawHud(t) {
   if (me.alive) {                                              // gunsight
     const s = proj(V2.copy(me.pos).addScaledVector(me.fwd, 190));
     if (s) { ctx.strokeStyle = t < hitFlash ? '#ff5a3c' : '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(s[0], s[1], 13, 0, 6.3); ctx.moveTo(s[0] - 22, s[1]); ctx.lineTo(s[0] - 6, s[1]); ctx.moveTo(s[0] + 6, s[1]); ctx.lineTo(s[0] + 22, s[1]); ctx.moveTo(s[0], s[1] - 22); ctx.lineTo(s[0], s[1] - 6); ctx.stroke(); }
+  }
+  // oil thrown back from a damaged engine spatters the pilot's view
+  if (me.alive && me.dmg.eng > 0.3) {
+    ctx.fillStyle = 'rgba(22, 13, 6, 0.6)';
+    for (let i = 0, n = Math.floor(me.dmg.eng * 16); i < n; i++) { const o = OIL[i]; ctx.beginPath(); ctx.ellipse(o[0] * W, o[1] * Hh, o[2] * Hh, o[2] * Hh * o[3], o[4], 0, 6.3); ctx.fill(); }
   }
   // minimap
   const R = 84, cx = W - R - 18, cy = Hh - R - 18, m = (x, z) => [cx + x / 700 * R, cy + z / 700 * R];
@@ -337,9 +361,11 @@ async function start() {
   } catch (err) { net?.close(); net = null; for (const p of [...planes.values()]) removePlane(p); $('status').textContent = err.message || String(err); $('go').disabled = false; }
 }
 initControls();
+$('camease').value = Math.round(camEase * 100);
+$('camease').addEventListener('input', e => setCamEase(e.target.value / 100));
 $('open-controls').addEventListener('click', () => toggleControls(true));
 $('form').addEventListener('submit', e => { e.preventDefault(); start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
-window.__woi = { planes, score, isHost, camera, sky, feed, H, hit: (p, d) => damage(p, d, null), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
+window.__woi = { planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
 frame();
 if (params.get('autostart')) start();

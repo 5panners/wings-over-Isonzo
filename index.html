@@ -63,14 +63,14 @@
 <body>
 <canvas id="c"></canvas>
 <canvas id="hud"></canvas>
-<div id="build" aria-label="Build number">Build 10</div>
+<div id="build" aria-label="Build number">Build 11</div>
 <div id="ui">
   <div id="score" class="panel"></div>
   <div id="stats" class="panel"></div>
   <div id="feed"></div>
   <div id="msg"></div>
   <div id="netinfo"></div>
-  <div id="help">W/S or ↑/↓ pitch · A/D or ←/→ roll · Q/E rudder · Shift / Ctrl throttle · Space or mouse to fire · M sound · [ ] time of day · Esc controller setup</div>
+  <div id="help">W/S or ↑/↓ pitch · A/D or ←/→ roll · Q/E rudder · Shift / Ctrl throttle · Space or mouse to fire · M sound · [ ] time of day · , . camera smoothing · Esc controller setup</div>
 </div>
 <div id="lobby">
   <form id="form" autocomplete="off">
@@ -97,6 +97,8 @@
       <div><label for="clock">Clock</label>
         <select id="clock"><option value="0">Stopped</option><option value="1">Real time</option><option value="12" selected>One hour every 5 minutes</option><option value="60">One hour every minute</option><option value="240">One hour every 15 seconds</option></select></div>
     </div>
+    <label for="camease">Camera smoothing <small>— low follows tightly, high eases in and out (also , and . in flight)</small></label>
+    <input id="camease" type="range" min="0" max="100" step="5" style="padding:0;border:0;background:none">
     <details><summary>Connection options</summary>
       <label for="relay">WebSocket relay <small>— only if peer-to-peer fails; everyone must use the same one</small></label>
       <input id="relay" placeholder="wss://your-relay.example">

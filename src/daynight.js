@@ -38,13 +38,14 @@ export function createDayNight(scene, { sun: light, hemi }) {
   // blend the three looks by the sun's height: dusk -> day as it climbs, dusk -> night as it sinks
   const blend = (key, d, n, out) => out.copy(LOOK.dusk[key]).lerp(LOOK.day[key], d).lerp(LOOK.night[key], n);
   const num = (key, d, n) => { const v = LOOK.dusk[key] + (LOOK.day[key] - LOOK.dusk[key]) * d; return v + (LOOK.night[key] - v) * n; };
-  let lastE = 9;
+  let lastE = 9, shadowExtent = 0;
 
   const api = {
     tod: 6,            // hour of day, 0..24
     rate: 12,          // game hours per real hour (1 = real time, 0 = stopped)
     sunDir, moonDir,
-    update(dt, focus, camera) {
+    // extent = half-width of the area the shadow map covers, centred on focus: small when low for crisp shadows
+    update(dt, focus, camera, extent = 260) {
       api.tod = (api.tod + api.rate * dt / 3600 + 24) % 24;
       arc(api.tod - 12, sunDir); arc(api.tod - 24.6, moonDir);      // moon peaks a little after midnight
       const e = sunDir.y, d = sst(-0.05, 0.35, e), n = sst(0.03, -0.26, e);
@@ -53,7 +54,12 @@ export function createDayNight(scene, { sun: light, hemi }) {
       if (bySun) { light.color.copy(lowSun).lerp(highSun, sst(0, 0.4, e)); light.intensity = 2.6 * sst(0, 0.14, e); }
       else { light.color.copy(moonLight); light.intensity = 0.75 * sst(0.02, 0.2, moonDir.y) * n; }
       light.castShadow = light.intensity > 0.02;
-      light.target.position.set(Math.round(focus.x / 20) * 20, 0, Math.round(focus.z / 20) * 20);
+      if (Math.abs(extent - shadowExtent) > shadowExtent * 0.04) {
+        shadowExtent = extent; const s = light.shadow.camera; s.left = s.bottom = -extent; s.right = s.top = extent; s.updateProjectionMatrix();
+        light.shadow.normalBias = Math.min(0.5, extent / 1024 * 2.5);        // a couple of shadow-map texels: enough to stop streaks, not enough to detach shadows
+      }
+      const snap = shadowExtent / 1024 * 4;                                    // move in whole texels so shadow edges do not shimmer
+      light.target.position.set(Math.round(focus.x / snap) * snap, Math.round(focus.y / snap) * snap, Math.round(focus.z / snap) * snap);
       light.position.copy(light.target.position).addScaledVector(dir, 2200); light.target.updateMatrixWorld();
       // discs and stars ride with the camera so they sit at the horizon, not in the map
       sunDisc.position.copy(camera.position).addScaledVector(sunDir, 6400); halo.position.copy(sunDisc.position);

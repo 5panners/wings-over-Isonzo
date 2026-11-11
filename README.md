@@ -36,19 +36,20 @@ Open http://localhost:8080. Any static file server works; the game is plain ES m
 | Fire | `Space` or mouse button |
 | Sound on / off | `M` |
 | Time of day, back / forward one hour | `[` / `]` |
+| Camera smoothing, less / more | `,` / `.` |
 
 ### Damage
 
-Modelled on Home Skies 1917. Every hit weakens the airframe and also damages one system:
+Based on Home Skies 1917, with hits located on the airframe: where a round strikes decides what it damages. Shots from astern tend to find the tail, head-on shots the engine, and shots from the side the wings.
 
-| System | Effect |
+| Zone | Effect |
 |---|---|
-| Engine | Less power; destroyed means no power, and it may catch fire |
-| Wings | Sluggish roll and a higher stall speed; badly damaged wings fold in a fast dive |
+| Engine | Less power and an oil leak (oil trail, spatter on your view); badly hit it misfires; destroyed means no power; it may catch fire |
+| Left / right wing | Sluggish roll, higher stall speed, and the aircraft keeps rolling toward the damaged side; a destroyed wing breaks away, a badly damaged one folds in a fast dive |
+| Tail controls | Weak elevator and rudder; destroyed means the tail is shot away |
 | Fuel tank | Leaks; with no fuel the engine stops |
-| Controls | Weak elevator and rudder |
 
-A burning aircraft loses airframe strength until the fire is blown out in a dive faster than top speed. When the airframe is gone the aircraft goes down, burning and out of control, and the loss is scored at that moment. The panel at the bottom left shows each system; smoke, flame and fuel vapour show it on the aircraft.
+Each change in handling is announced in the feed. A burning aircraft loses airframe strength until the fire is blown out in a dive faster than top speed. An aircraft that loses a wing, its tail or all its strength goes down: it noses over, spins and falls fast. The loss is scored at that moment. The panel at the bottom left shows every zone.
 
 ### Day and night
 
@@ -73,7 +74,7 @@ The flight model and chase camera come from Home Skies 1917:
 - The aircraft turns by banking and holds the bank you set; there is no self-levelling.
 - The flight path follows the nose only as fast as the wings can pull, so hauling back hard bleeds speed.
 - Below stall speed the aircraft sinks and drops its nose; let it dive to recover.
-- The camera sits behind and above and always keeps the horizon level.
+- The camera sits behind and above and always keeps the horizon level. How lazily it follows is the "Camera smoothing" slider in the lobby.
 
 Add `?shadows=0` to the URL on slow machines.
 

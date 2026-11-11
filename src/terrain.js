@@ -16,7 +16,7 @@ scene.fog = new THREE.Fog(HAZE, 500, 3400);
 }
 const SUN = new THREE.Vector3(-0.62, 0.58, 0.5).normalize();
 const hemi = new THREE.HemisphereLight('#cfe4ff', '#8a7a55', 1.25); scene.add(hemi);
-const sun = new THREE.DirectionalLight('#fff0d2', 2.6); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.6; scene.add(sun, sun.target);
+const sun = new THREE.DirectionalLight('#fff0d2', 2.6); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0002; sun.shadow.normalBias = 0.3; scene.add(sun, sun.target);
 
 // ---------- terrain ----------
 const SIZE = 1950, N = 260, cell = SIZE / N;
