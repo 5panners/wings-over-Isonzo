@@ -1,0 +1,14 @@
+{
+  "name": "wings-over-isonzo",
+  "version": "0.1.0",
+  "description": "WW1 arcade low-poly flight game over the Isonzo front",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "npx --yes serve -l 8080 .",
+    "relay": "node server/relay.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
