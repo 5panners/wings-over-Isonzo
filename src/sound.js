@@ -62,6 +62,7 @@ export function startSound() {
 
 // Make a recording loop without a click: cut the silence MP3 encoding leaves at each end, then fade the
 // last part of the clip into the first part so the join is continuous.
+const LOOP_TRIM = 0.63;      // brings this recording (4 dB hotter than the first two) to the level the mix was set for
 function seamless(buf) {
   const d = buf.getChannelData(0), sr = buf.sampleRate;
   let a = 0, b = d.length - 1; while (a < b && Math.abs(d[a]) < 0.004) a++; while (b > a && Math.abs(d[b]) < 0.004) b--;
@@ -70,8 +71,8 @@ function seamless(buf) {
   const out = ctx.createBuffer(buf.numberOfChannels, n, sr);
   for (let c = 0; c < buf.numberOfChannels; c++) {
     const src = buf.getChannelData(c), dst = out.getChannelData(c);
-    for (let i = 0; i < n; i++) dst[i] = src[a + i];
-    for (let i = 0; i < fade; i++) { const w = i / fade; dst[i] = src[a + i] * Math.sqrt(w) + src[a + n + i] * Math.sqrt(1 - w); }   // equal-power crossfade
+    for (let i = 0; i < n; i++) dst[i] = src[a + i] * LOOP_TRIM;
+    for (let i = 0; i < fade; i++) { const w = i / fade; dst[i] = (src[a + i] * Math.sqrt(w) + src[a + n + i] * Math.sqrt(1 - w)) * LOOP_TRIM; }   // equal-power crossfade
   }
   return out;
 }
