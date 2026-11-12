@@ -6,7 +6,7 @@ import { buildObjects } from './objects.js';
 import { AIRFIELDS, SECTORS, riverX, HALF, H } from './world.js';
 import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, BOT_LEVELS, botSettings, COLLIDE_RADIUS, ZONE_TEXT, zoneAt, takeHit, systems, startDying, flyPlayer, flyBot, flyRemote } from './plane.js';
 import { connect } from './net.js';
-import { startSound, updateSound, toggleMute, isMuted, gunSound, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
+import { startSound, updateSound, updateOthers, toggleMute, isMuted, gunSound, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
 import { pollGamepad, updateControls, initControls, toggleControls, controlsOpen } from './gamepad.js';
 
 const MAX_PER_TEAM = 6, SCORE_LIMIT = 30, RESPAWN = 5, SEND_HZ = 15;
@@ -188,7 +188,21 @@ function frame() {
   const t = now(), dt = Math.min(0.05, t - last); last = t;
   if (running && !window.__woi.freeze) step(t, dt);   // freeze: test hook to hold the simulation still
   updateControls();
-  if (me) updateSound(running && me.alive, me.power, me.speed, TYPES[me.type].top);
+  if (me) {
+    updateSound(running && me.alive, me.power, me.speed, TYPES[me.type].top);
+    // other aircraft's engines: volume by distance, left/right by where they are, pitch by Doppler shift.
+    // SOUND_SPEED is lower than real (340) so the pitch drop of a pass is easy to hear.
+    const SOUND_SPEED = 200, list = [], live = running && me.alive;
+    V2.set(1, 0, 0).applyQuaternion(camera.quaternion);                                  // listener's right
+    for (const p of planes.values()) {
+      if (p === me || !p.alive || !running) continue;
+      V.copy(p.pos).sub(live ? me.pos : camera.position); const dist = V.length(); if (dist > 320) continue;
+      V.divideScalar(dist || 1);                                                         // unit vector from listener to source
+      const vl = live ? me.vdir.dot(V) * me.speed : 0, vs = p.fwd.dot(V) * p.speed;       // each one's speed along that line
+      list.push({ id: p.id, dist, doppler: THREE.MathUtils.clamp((SOUND_SPEED + vl) / (SOUND_SPEED + vs), 0.55, 1.9), pan: THREE.MathUtils.clamp(V.dot(V2), -1, 1) * 0.8 });
+    }
+    updateOthers(list);
+  }
   updateEffects(dt);
   updateWater(t, sun, hemi);
   updateCamera(dt);

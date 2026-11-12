@@ -15,7 +15,15 @@ export function startSound() {
   const g = ctx.createGain(); g.gain.value = 0; g.connect(master);
   eng = { g, src: null, rate: 1 };
   fetch(new URL('../assets/engine.mp3', import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => {
-    const src = ctx.createBufferSource(); src.buffer = seamless(buf); src.loop = true; src.connect(g); src.start(); eng.src = src;
+    const loop = seamless(buf);
+    const src = ctx.createBufferSource(); src.buffer = loop; src.loop = true; src.connect(g); src.start(); eng.src = src;
+    // voices for other aircraft: each is the same loop with its own volume, stereo position and speed
+    for (let i = 0; i < VOICES; i++) {
+      const s = ctx.createBufferSource(), vg = ctx.createGain(), pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+      s.buffer = loop; s.loop = true; vg.gain.value = 0; s.connect(vg); if (pan) { vg.connect(pan); pan.connect(master); } else vg.connect(master);
+      s.start(0, loop.duration * i / VOICES);                       // staggered so voices do not phase together
+      voices.push({ src: s, g: vg, pan, id: null, rate: 1, vol: 0 });
+    }
   }).catch(() => { /* no engine sound if the file cannot be loaded */ });
   // wind: looped noise through a band-pass that opens up with speed
   const src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), wg = ctx.createGain();
@@ -56,10 +64,41 @@ export function updateSound(alive, throttle, speed, topSpeed) {
   // set directly each frame with our own smoothing: scheduled changes to a looping sample's speed are ignored by some browsers
   eng.rate += (0.55 + throttle * 0.75 + k * 0.2 - eng.rate) * 0.12;
   if (eng.src) eng.src.playbackRate.value = eng.rate;
-  eng.g.gain.setTargetAtTime(alive ? 0.22 + throttle * 0.38 : 0, t, 0.12);
+  eng.g.gain.setTargetAtTime(alive ? 0.13 + throttle * 0.22 : 0, t, 0.12);
   wind.bp.frequency.setTargetAtTime(300 + k * 900, t, 0.2);
   wind.g.gain.setTargetAtTime(alive ? Math.min(0.22, 0.03 + k * k * 0.1) : 0.02, t, 0.2);
 }
+
+// Other aircraft. list = [{ id, dist, doppler, pan }] for aircraft near the listener:
+//   dist    distance in units
+//   doppler pitch factor from relative motion (above 1 approaching, below 1 receding)
+//   pan     -1 (left) .. 1 (right)
+// The nearest few get a voice each. As one sweeps past, volume peaks and the pitch drops: the whizz.
+const VOICES = 4, voices = [];
+let rush = null;
+export function updateOthers(list) {
+  if (!ctx || !voices.length) return;
+  if (!rush) {                                                     // air rush layered on a close pass
+    const src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), g = ctx.createGain();
+    src.buffer = noise; src.loop = true; bp.type = 'bandpass'; bp.Q.value = 1.2; g.gain.value = 0; src.connect(bp); bp.connect(g); g.connect(master); src.start();
+    rush = { bp, g, vol: 0 };
+  }
+  list.sort((a, b) => a.dist - b.dist); list.length = Math.min(list.length, VOICES);
+  for (const v of voices) if (v.id !== null && !list.some(o => o.id === v.id)) v.id = null;         // its aircraft is no longer among the nearest
+  let close = 0, closeRate = 1;
+  for (const o of list) {
+    let v = voices.find(x => x.id === o.id) || voices.find(x => x.id === null && x.vol < 0.01) || voices.find(x => x.id === null);
+    if (!v) continue;
+    if (v.id !== o.id) { v.id = o.id; v.rate = 1.15 * o.doppler; }
+    const vol = 0.55 / (1 + (o.dist / 40) * (o.dist / 40)) * Math.max(0, 1 - o.dist / 320);
+    v.vol += (vol - v.vol) * 0.25; v.rate += (1.15 * o.doppler - v.rate) * 0.3;
+    v.g.gain.value = v.vol; v.src.playbackRate.value = v.rate; if (v.pan) v.pan.pan.value = o.pan;
+    const c = Math.max(0, 1 - o.dist / 45); if (c > close) { close = c; closeRate = o.doppler; }
+  }
+  for (const v of voices) if (v.id === null && v.vol > 0) { v.vol *= 0.8; if (v.vol < 0.002) v.vol = 0; v.g.gain.value = v.vol; }
+  rush.vol += (close * close * 0.35 - rush.vol) * 0.3; rush.g.gain.value = rush.vol; rush.bp.frequency.value = 900 * closeRate;
+}
+export const otherVoices = () => voices.map(v => ({ id: v.id, vol: +v.vol.toFixed(3), rate: +v.rate.toFixed(2) }));   // for tests
 
 const near = dist => 1 / (1 + (dist / 70) * (dist / 70));          // loudness falls off with distance
 function burst(dur, type, f0, f1, gain) {                           // a filtered slice of noise with a decaying envelope
