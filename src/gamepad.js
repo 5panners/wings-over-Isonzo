@@ -169,7 +169,7 @@ function onClick(e) {
   else if (t.id === 'cal-cancel') { calib = null; render(); }
   else if (t.id === 'cal-clear') { cfg.cal = {}; save(); render(); }
   else if (t.id === 'defaults') { const p = pads().find(x => x.mapping === 'standard') || pads()[0]; if (p) { applyDefaults(p); render(); } }
-  else if (t.id === 'controls-close') toggleControls(false);
+  else if (t.id === 'controls-close') $('controls').dispatchEvent(new Event('close-request'));
 }
 function onChange(e) {
   const t = e.target, d = t.dataset;
@@ -192,6 +192,6 @@ export function initControls() {
   setInterval(() => { if (open) { pollCapture(); pollCalib(); } }, 25);   // own timer, so it keeps sampling even at low frame rates
   $('controls').addEventListener('click', onClick);
   $('controls').addEventListener('input', onChange);
-  $('controls').addEventListener('mousedown', e => { if (e.target.id === 'controls') toggleControls(false); });
+  $('controls').addEventListener('mousedown', e => { if (e.target.id === 'controls') $('controls').dispatchEvent(new Event('close-request')); });
 }
 export const _debug = { get cfg() { return cfg; } };

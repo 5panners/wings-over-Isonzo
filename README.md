@@ -57,7 +57,7 @@ The sun rises in the east at 06:00 and sets in the west at 18:00; the moon is up
 
 ### Controllers
 
-Gamepads, joysticks, throttles and rudder pedals work alongside the keyboard. Open **Options** from the lobby, or press `Esc` in flight; controller settings are on the Controls tab.
+Gamepads, joysticks, throttles and rudder pedals work alongside the keyboard. The start screen is the first tab of **Options** (Game, Controls, Flight, Graphics, Audio); press `Esc` in flight to reopen the others; controller settings are on the Controls tab.
 
 - **Assign:** press Assign next to an action, then move that control (or press that button). Each binding remembers its device, so a stick, a throttle and pedals can be mixed.
 - **Standard layout:** an Xbox / PlayStation style pad is set up automatically — left stick pitch and roll, right stick rudder and throttle, right trigger fires.

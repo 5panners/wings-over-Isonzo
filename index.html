@@ -34,8 +34,15 @@
   button { margin-top: 18px; width: 100%; font: 700 16px Inter, system-ui, sans-serif; padding: 12px; border: 0; border-radius: 4px; background: #1d1b16; color: #efe6cf; cursor: pointer; }
   button:disabled { opacity: .6; cursor: wait; }
   details { margin-top: 12px; font-size: 13px; color: #3a362c; }
-  #controls { display: none; position: fixed; inset: 0; place-items: center; background: rgba(12, 16, 20, .6); padding: 16px; overflow: auto; z-index: 5; }
+  #controls { display: none; position: fixed; inset: 0; place-items: center; background: linear-gradient(rgba(12, 16, 20, .3), rgba(12, 16, 20, .7)); padding: 16px; overflow: auto; z-index: 5; }
   #controls > div { width: min(760px, 100%); background: #efe6cf; color: #1d1b16; border-radius: 6px; padding: 22px 26px; box-sizing: border-box; box-shadow: 0 12px 50px rgba(0, 0, 0, .5); }
+  /* the Game tab holds the start form */
+  #tab-game form { width: auto; max-width: 560px; background: none; padding: 0; box-shadow: none; border-radius: 0; margin-top: 10px; }
+  #tab-game label { display: block; font-weight: 600; font-size: 13px; margin: 12px 0 4px; white-space: normal; }
+  #tab-game .row label { margin-top: 12px; }
+  #tab-game p { margin: 0 0 6px; color: #3a362c; font-size: 14.5px; }
+  #tab-game #go { display: block; width: 100%; margin-top: 18px; padding: 12px; background: #1d1b16; color: #efe6cf; border: 0; font: 700 16px Inter, system-ui, sans-serif; }
+  #tab-game #go:disabled { opacity: .6; cursor: wait; }
   #controls h2 { font: 700 26px Georgia, serif; margin: 0 0 8px; }
   #controls h3 { font: 700 12px Inter, system-ui, sans-serif; letter-spacing: .16em; text-transform: uppercase; margin: 16px 0 6px; padding-bottom: 4px; border-bottom: 1.5px solid #1d1b16; }
   #controls .tabs { display: flex; gap: 6px; border-bottom: 2px solid #1d1b16; margin-bottom: 4px; }
@@ -70,7 +77,6 @@
   #controls .sliders { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; } #controls .sliders label { display: block; font-weight: 600; font-size: 13px; margin: 0; white-space: normal; }
   #controls .sliders output { float: right; font-weight: 400; } #controls input[type=range] { padding: 0; border: 0; background: none; }
   #controls .foot { display: flex; justify-content: space-between; margin-top: 16px; }
-  #open-controls { margin-top: 8px; background: none; color: #1d1b16; border: 1.5px solid #1d1b16; font-size: 14px; padding: 9px; }
   /* letterbox bars for the going-down shot */
   body::before, body::after { content: ""; position: fixed; left: 0; right: 0; height: 0; background: #000; z-index: 4; transition: height .5s ease; pointer-events: none; }
   body::before { top: 0; } body::after { bottom: 0; }
@@ -84,7 +90,7 @@
 <body>
 <canvas id="c"></canvas>
 <canvas id="hud"></canvas>
-<div id="build" aria-label="Build number">Build 33</div>
+<div id="build" aria-label="Build number">Build 34</div>
 <div id="ui">
   <div id="score" class="panel"></div>
   <div id="stats" class="panel"></div>
@@ -93,10 +99,18 @@
   <div id="netinfo"></div>
   <div id="help">W/S or ↑/↓ pitch · A/D or ←/→ roll · Q/E rudder · Shift / Ctrl throttle · Space or mouse to fire · M sound · [ ] time of day · Esc options</div>
 </div>
-<div id="lobby">
+<div id="controls" role="dialog" aria-label="Options"><div>
+  <h2 id="opt-title">Wings over Isonzo</h2>
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" data-tab="game" class="on">Game</button>
+    <button type="button" role="tab" data-tab="controls">Controls</button>
+    <button type="button" role="tab" data-tab="flight">Flight</button>
+    <button type="button" role="tab" data-tab="graphics">Graphics</button>
+    <button type="button" role="tab" data-tab="audio">Audio</button>
+  </div>
+  <div id="tab-game" role="tabpanel">
+
   <form id="form" autocomplete="off">
-    <div class="k">Isonzo Front · 1917</div>
-    <h1>Wings over Isonzo</h1>
     <p>Team dogfight, up to 6 v 6. Everyone who enters the same squadron password flies in the same battle. Leave it empty to fly solo against bots.</p>
     <label for="name">Callsign</label>
     <input id="name" maxlength="20" required>
@@ -123,19 +137,10 @@
       <input id="relay" placeholder="wss://your-relay.example">
     </details>
     <button id="go">Take off</button>
-    <button type="button" id="open-controls">Options — controls and graphics</button>
     <div id="status" role="status"></div>
   </form>
-</div>
-<div id="controls" role="dialog" aria-label="Options"><div>
-  <h2>Options</h2>
-  <div class="tabs" role="tablist">
-    <button type="button" role="tab" data-tab="controls" class="on">Controls</button>
-    <button type="button" role="tab" data-tab="flight">Flight</button>
-    <button type="button" role="tab" data-tab="graphics">Graphics</button>
-    <button type="button" role="tab" data-tab="audio">Audio</button>
   </div>
-  <div id="tab-controls" role="tabpanel">
+  <div id="tab-controls" role="tabpanel" hidden>
     <h3>Keyboard</h3>
     <p class="keys">Pitch <b>W S</b> or <b>↑ ↓</b> · Roll <b>A D</b> or <b>← →</b> · Rudder <b>Q E</b> · Throttle <b>Shift</b> / <b>Ctrl</b> · Fire <b>Space</b> or mouse · Sound <b>M</b> · Time of day <b>[ ]</b> · Options <b>Esc</b></p>
     <h3>Camera</h3>

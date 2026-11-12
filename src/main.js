@@ -165,7 +165,7 @@ function manageBots() {
 
 // ---------------- input ----------------
 const keys = new Set(); let mouseFire = false;
-addEventListener('keydown', e => { if (e.code === 'Escape' && (running || controlsOpen())) return toggleControls(); if (controlsOpen()) return; startSound(); if (running && (e.code === 'Comma' || e.code === 'Period')) { setCamEase(camEase + (e.code === 'Period' ? 0.1 : -0.1)); say(`Camera smoothing ${Math.round(camEase * 100)}%`); } if (e.code === 'KeyM' && running) { say(toggleMute() ? 'Sound off' : 'Sound on'); $('aud-mute').checked = isMuted(); }
+addEventListener('keydown', e => { if (e.code === 'Escape' && running) return toggleControls(); if (controlsOpen()) return; startSound(); if (running && (e.code === 'Comma' || e.code === 'Period')) { setCamEase(camEase + (e.code === 'Period' ? 0.1 : -0.1)); say(`Camera smoothing ${Math.round(camEase * 100)}%`); } if (e.code === 'KeyM' && running) { say(toggleMute() ? 'Sound off' : 'Sound on'); $('aud-mute').checked = isMuted(); }
   if (running && (e.code === 'BracketLeft' || e.code === 'BracketRight')) { if (isHost()) { sky.tod = (sky.tod + (e.code === 'BracketRight' ? 1 : 23)) % 24; say('Time set to ' + sky.clock()); } else say('Only the host can change the time'); }
   keys.add(e.code); if (running && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); });
 addEventListener('keyup', e => keys.delete(e.code));
@@ -439,19 +439,23 @@ async function start() {
     me = addPlane(net?.id || 'solo', name, team, TEAM_TYPE[team], net?.id || 'solo', false);
     me.spawn(now(), onRunway); camera.position.copy(me.pos).addScaledVector(me.fwd, -20);
     if (onRunway) say('On the runway: open the throttle, then ease the stick back to lift off');
-    sky.clock(); $('lobby').style.display = 'none'; $('ui').style.display = 'block'; running = true; window.__woi.me = me; window.__woi.net = net;
+    sky.clock(); running = true; toggleControls(false); document.querySelector('[data-tab=game]').hidden = true; $('opt-title').textContent = 'Options'; showTab('controls'); $('ui').style.display = 'block'; window.__woi.me = me; window.__woi.net = net;
   } catch (err) { net?.close(); net = null; for (const p of [...planes.values()]) removePlane(p); $('status').textContent = err.message || String(err); $('go').disabled = false; }
 }
 initControls();
 setCamEase(camEase);
 $('camease').addEventListener('input', e => setCamEase(e.target.value / 100));
-$('open-controls').addEventListener('click', () => { startSound(); toggleControls(true); });
+// the start screen is the Options dialog's first tab; it stays open until the game begins
+function showTab(name) {
+  for (const t of document.querySelectorAll('#controls .tabs button')) t.classList.toggle('on', t.dataset.tab === name);
+  for (const n of ['game', 'controls', 'flight', 'graphics', 'audio']) $('tab-' + n).hidden = n !== name;
+  if (name === 'audio') startSound();
+}
+const closeOptions = () => { if (running) toggleControls(false); else showTab('game'); };       // before take-off "Done" returns to the Game tab
+$('controls').addEventListener('close-request', closeOptions);
+toggleControls(true); showTab('game');
 // options dialog: tabs
-for (const tab of document.querySelectorAll('#controls .tabs button')) tab.addEventListener('click', () => {
-  for (const t of document.querySelectorAll('#controls .tabs button')) t.classList.toggle('on', t === tab);
-  for (const name of ['controls', 'flight', 'graphics', 'audio']) $('tab-' + name).hidden = tab.dataset.tab !== name;
-  if (tab.dataset.tab === 'audio') startSound();
-});
+for (const tab of document.querySelectorAll('#controls .tabs button')) tab.addEventListener('click', () => showTab(tab.dataset.tab));
 // options dialog: graphics
 const noShadowsUrl = params.get('shadows') === '0';
 function applyGfx(save = true) {
@@ -467,7 +471,7 @@ $('gfx-shadows').addEventListener('change', e => { gfx.shadows = e.target.checke
 $('gfx-shadowdist').addEventListener('input', e => { gfx.shadowDist = +e.target.value; applyGfx(); });
 $('gfx-scale').addEventListener('input', e => { gfx.scale = e.target.value / 100; applyGfx(); });
 $('gfx-reset').addEventListener('click', () => { Object.assign(gfx, GFX_DEFAULT); applyGfx(); });
-$('gfx-close').addEventListener('click', () => toggleControls(false));
+$('gfx-close').addEventListener('click', () => closeOptions());
 // options dialog: flight model
 const SPAD_STALL = TYPES.spad.stall * 3.6, SPAD_TOP = TYPES.spad.top * 3.6;
 const FLIGHT_ROWS = [
@@ -494,7 +498,7 @@ $('flt-rows').addEventListener('input', e => { const k = e.target.dataset.flt; i
 $('flt-invert').addEventListener('change', e => setFlight({ invert: e.target.checked }));
 for (const b of document.querySelectorAll('[data-preset]')) b.addEventListener('click', () => { setFlight({ ...FLIGHT_PRESETS[b.dataset.preset], invert: flight.invert }); showFlight(); });
 $('flt-reset').addEventListener('click', () => { setFlight({ ...FLIGHT_DEFAULT }); showFlight(); });
-$('flt-close').addEventListener('click', () => toggleControls(false));
+$('flt-close').addEventListener('click', () => closeOptions());
 showFlight();
 // options dialog: audio, one volume slider per kind of sound
 $('aud-rows').innerHTML = CHANNELS.map(c => `<div class="aud-row"><span>${c.label}</span><input type="range" min="0" max="200" step="5" data-vol="${c.key}" aria-label="${c.label} volume"><output data-out="${c.key}"></output><button type="button" data-test="${c.key}">Test</button></div><p class="aud-hint">${c.hint}</p>`).join('');
@@ -503,7 +507,7 @@ $('aud-rows').addEventListener('input', e => { const k = e.target.dataset.vol; i
 $('aud-rows').addEventListener('click', e => { const k = e.target.dataset.test; if (k) { startSound(); previewSound(k); } });
 $('aud-mute').addEventListener('change', e => setMuted(e.target.checked));
 $('aud-reset').addEventListener('click', () => { resetVolumes(); setMuted(false); showVolumes(); });
-$('aud-close').addEventListener('click', () => toggleControls(false));
+$('aud-close').addEventListener('click', () => closeOptions());
 showVolumes();
 applyGfx(false);
 $('form').addEventListener('submit', e => { e.preventDefault(); start(); });
