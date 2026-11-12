@@ -86,7 +86,7 @@ Options has an Audio tab with a volume slider for each kind of sound: master, yo
 
 ### Graphics options
 
-Options has a Graphics tab: shadows on or off, shadow distance (how far from your aircraft shadows reach when you are high), and rendering scale (the resolution the 3D view is drawn at; lower is faster). Settings are saved in the browser. Adding `?shadows=0` to the URL also turns shadows off.
+Options has a Graphics tab: shadows on or off, shadow distance (how far from your aircraft shadows reach when you are high, up to 2000 m; further means softer shadows), and rendering scale (the resolution the 3D view is drawn at; lower is faster). Settings are saved in the browser. Adding `?shadows=0` to the URL also turns shadows off.
 
 ## Multiplayer
 

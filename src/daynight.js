@@ -57,7 +57,7 @@ export function createDayNight(scene, { sun: light, hemi }) {
       light.castShadow = api.shadows && light.intensity > 0.02;
       if (Math.abs(extent - shadowExtent) > shadowExtent * 0.04) {
         shadowExtent = extent; const s = light.shadow.camera; s.left = s.bottom = -extent; s.right = s.top = extent; s.updateProjectionMatrix();
-        light.shadow.normalBias = Math.min(0.35, extent / 1024 * 1.2);        // a couple of shadow-map texels: enough to stop streaks, not enough to detach shadows
+        light.shadow.normalBias = Math.min(2.5, Math.max(0.07, extent / 1024 * 1.2));   // about a texel of the shadow map        // a couple of shadow-map texels: enough to stop streaks, not enough to detach shadows
       }
       const snap = shadowExtent / 1024 * 4;                                    // move in whole texels so shadow edges do not shimmer
       light.target.position.set(Math.round(focus.x / snap) * snap, Math.round(focus.y / snap) * snap, Math.round(focus.z / snap) * snap);

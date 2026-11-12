@@ -337,7 +337,7 @@ function updateCamera(dt) {
   // advance the clock; this also keeps the shadow map centred on the aircraft, and tight around it when low
   // so that its shadow on the ground is crisp
   const c = me ? me.pos : V.set(0, 0, 0);
-  sky.update(dt, c, camera, me ? THREE.MathUtils.clamp(55 + (me.pos.y - H(me.pos.x, me.pos.z)) * 2, 60, Math.max(60, gfx.shadowDist)) : gfx.shadowDist);
+  sky.update(dt, c, camera, me ? THREE.MathUtils.clamp(60 + (me.pos.y - H(me.pos.x, me.pos.z)) * 4, 60, Math.max(60, gfx.shadowDist)) : gfx.shadowDist);
 }
 
 // ---------------- HUD ----------------
@@ -455,7 +455,7 @@ for (const tab of document.querySelectorAll('#controls .tabs button')) tab.addEv
 // options dialog: graphics
 const noShadowsUrl = params.get('shadows') === '0';
 function applyGfx(save = true) {
-  gfx.shadowDist = THREE.MathUtils.clamp(+gfx.shadowDist || 300, 60, 600); gfx.scale = THREE.MathUtils.clamp(+gfx.scale || 1, 0.3, 2);
+  gfx.shadowDist = THREE.MathUtils.clamp(+gfx.shadowDist || 300, 60, 2000); gfx.scale = THREE.MathUtils.clamp(+gfx.scale || 1, 0.3, 2);
   sky.shadows = gfx.shadows && !noShadowsUrl;
   renderer.setPixelRatio(Math.min(devicePixelRatio * gfx.scale, 4)); resize();
   $('gfx-shadows').checked = sky.shadows; $('gfx-shadows').disabled = noShadowsUrl;
@@ -480,6 +480,6 @@ showVolumes();
 applyGfx(false);
 $('form').addEventListener('submit', e => { e.preventDefault(); start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
-window.__woi = { gfx, renderer, explode, flashes, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
+window.__woi = { shadowExtent: () => sun.shadow.camera.right, gfx, renderer, explode, flashes, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
 frame();
 if (params.get('autostart')) start();
