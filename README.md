@@ -80,6 +80,10 @@ The flight model and chase camera come from Home Skies 1917:
 - Below stall speed the aircraft sinks and drops its nose; let it dive to recover.
 - The camera sits behind and above and always keeps the horizon level. How lazily it follows is the "Camera smoothing" slider on the Controls tab of Options.
 
+### Flight options
+
+Options has a Flight tab that changes how your own aircraft handles: pitch, roll and rudder response, optional wing levelling, stall speed, top speed, how much speed hard turns cost, aircraft toughness, and inverted pitch. Presets give Forgiving, Standard and Demanding settings in one click. Bots always fly the standard model, so in a shared battle each pilot can choose their own.
+
 ### Audio options
 
 Options has an Audio tab with a volume slider for each kind of sound: master, your engine, other aircraft (their engines and the Doppler pitch drop as they pass), wind, guns, hits and explosions. Each runs from silent to double the designed level, has a Test button, and is saved in the browser. A Mute checkbox does the same as `M`.

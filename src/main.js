@@ -4,7 +4,7 @@ import { buildTerrain } from './terrain.js';
 import { createDayNight } from './daynight.js';
 import { buildObjects } from './objects.js';
 import { AIRFIELDS, SECTORS, riverX, HALF, HALF_X, H, coastZ, coastW, coastE } from './world.js';
-import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, BOT_LEVELS, botSettings, COLLIDE_RADIUS, ZONE_TEXT, zoneAt, takeHit, systems, startDying, flyPlayer, flyBot, flyRemote } from './plane.js';
+import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, BOT_LEVELS, botSettings, COLLIDE_RADIUS, flight, setFlight, FLIGHT_DEFAULT, ZONE_TEXT, zoneAt, takeHit, systems, startDying, flyPlayer, flyBot, flyRemote } from './plane.js';
 import { connect } from './net.js';
 import { startSound, updateSound, updateOthers, toggleMute, setMuted, isMuted, CHANNELS, getVolume, setVolume, resetVolumes, previewSound, gunSound, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
 import { pollGamepad, updateControls, initControls, toggleControls, controlsOpen } from './gamepad.js';
@@ -108,7 +108,7 @@ function goDown(p, by, why) {                 // fatally hit: falls burning and 
 function damage(p, amount, by, where) {
   if (!p.alive || p.dying) return;
   p.lastHitBy = by; p.lastHitAt = now();
-  const msgs = takeHit(p, amount, where);
+  const msgs = takeHit(p, amount, where, p === me ? 1 / flight.tough : 1);
   if (p === me) { hitTakenSound(); msgs.forEach(say); }
   if (p.hp <= 0) goDown(p, by, 'Shot to pieces.');
 }
@@ -176,7 +176,7 @@ const clamp1 = v => Math.max(-1, Math.min(1, v));
 function readInput() {                                        // keyboard and controller add together
   const g = pollGamepad();
   return {
-    pitch: clamp1(k('KeyS', 'ArrowDown') - k('KeyW', 'ArrowUp') + g.pitch),       // S / down arrow / stick back pulls the nose up
+    pitch: clamp1(k('KeyS', 'ArrowDown') - k('KeyW', 'ArrowUp') + g.pitch) * (flight.invert ? -1 : 1),       // S / down arrow / stick back pulls the nose up (reversed if inverted)
     roll: clamp1(k('KeyD', 'ArrowRight') - k('KeyA', 'ArrowLeft') + g.roll),
     yaw: clamp1(k('KeyE') - k('KeyQ') + g.yaw),
     throttle: clamp1(k('ShiftLeft', 'ShiftRight') - k('ControlLeft', 'KeyC') + g.throttle),
@@ -449,7 +449,7 @@ $('open-controls').addEventListener('click', () => { startSound(); toggleControl
 // options dialog: tabs
 for (const tab of document.querySelectorAll('#controls .tabs button')) tab.addEventListener('click', () => {
   for (const t of document.querySelectorAll('#controls .tabs button')) t.classList.toggle('on', t === tab);
-  for (const name of ['controls', 'graphics', 'audio']) $('tab-' + name).hidden = tab.dataset.tab !== name;
+  for (const name of ['controls', 'flight', 'graphics', 'audio']) $('tab-' + name).hidden = tab.dataset.tab !== name;
   if (tab.dataset.tab === 'audio') startSound();
 });
 // options dialog: graphics
@@ -468,6 +468,34 @@ $('gfx-shadowdist').addEventListener('input', e => { gfx.shadowDist = +e.target.
 $('gfx-scale').addEventListener('input', e => { gfx.scale = e.target.value / 100; applyGfx(); });
 $('gfx-reset').addEventListener('click', () => { Object.assign(gfx, GFX_DEFAULT); applyGfx(); });
 $('gfx-close').addEventListener('click', () => toggleControls(false));
+// options dialog: flight model
+const SPAD_STALL = TYPES.spad.stall * 3.6, SPAD_TOP = TYPES.spad.top * 3.6;
+const FLIGHT_ROWS = [
+  { key: 'pitch', label: 'Pitch response', min: 50, max: 150, hint: 'How briskly the nose answers the stick up and down', fmt: v => v + '%' },
+  { key: 'roll', label: 'Roll response', min: 50, max: 150, hint: 'How quickly the wings bank', fmt: v => v + '%' },
+  { key: 'rudder', label: 'Rudder strength', min: 50, max: 200, hint: 'How hard the rudder swings the nose; also turns the aircraft flat without bank', fmt: v => v + '%' },
+  { key: 'level', label: 'Wing levelling', min: 0, max: 100, hint: 'With the stick released the wings roll back toward level. Off keeps the bank you set', fmt: v => v ? v + '%' : 'off' },
+  { key: 'stall', label: 'Stall speed', min: 60, max: 130, hint: 'Below this the wings stop lifting. Lower is more forgiving in tight turns', fmt: v => `${v}%  (SPAD ${Math.round(SPAD_STALL * v / 100)} km/h)` },
+  { key: 'top', label: 'Top speed', min: 80, max: 130, hint: 'Engine power: the level top speed and how fast you climb', fmt: v => `${v}%  (SPAD ${Math.round(SPAD_TOP * v / 100)} km/h)` },
+  { key: 'bleed', label: 'Speed lost in turns', min: 0, max: 200, hint: 'How much speed hard pulls cost. Lower keeps energy in a dogfight', fmt: v => v + '%' },
+  { key: 'tough', label: 'Aircraft toughness', min: 50, max: 300, hint: 'How much punishment your aircraft takes before systems fail and it goes down', fmt: v => v + '%' },
+];
+const FLIGHT_PRESETS = {
+  forgiving: { level: 0.5, stall: 0.85, bleed: 0.6, tough: 1.5, top: 1, pitch: 1, roll: 1, rudder: 1 },
+  standard: { ...FLIGHT_DEFAULT, invert: flight.invert },
+  demanding: { level: 0, stall: 1.1, bleed: 1.4, tough: 0.8, top: 1, pitch: 1, roll: 1, rudder: 1 },
+};
+$('flt-rows').innerHTML = FLIGHT_ROWS.map(r => `<div class="aud-row flt"><span>${r.label}</span><input type="range" min="${r.min}" max="${r.max}" step="5" data-flt="${r.key}" aria-label="${r.label}"><output data-fout="${r.key}"></output></div><p class="aud-hint">${r.hint}</p>`).join('');
+function showFlight() {
+  for (const r of FLIGHT_ROWS) { const v = Math.round(flight[r.key] * 100); document.querySelector(`[data-flt="${r.key}"]`).value = v; document.querySelector(`[data-fout="${r.key}"]`).textContent = r.fmt(v); }
+  $('flt-invert').checked = flight.invert;
+}
+$('flt-rows').addEventListener('input', e => { const k = e.target.dataset.flt; if (k) { setFlight({ [k]: e.target.value / 100 }); showFlight(); } });
+$('flt-invert').addEventListener('change', e => setFlight({ invert: e.target.checked }));
+for (const b of document.querySelectorAll('[data-preset]')) b.addEventListener('click', () => { setFlight({ ...FLIGHT_PRESETS[b.dataset.preset], invert: flight.invert }); showFlight(); });
+$('flt-reset').addEventListener('click', () => { setFlight({ ...FLIGHT_DEFAULT }); showFlight(); });
+$('flt-close').addEventListener('click', () => toggleControls(false));
+showFlight();
 // options dialog: audio, one volume slider per kind of sound
 $('aud-rows').innerHTML = CHANNELS.map(c => `<div class="aud-row"><span>${c.label}</span><input type="range" min="0" max="200" step="5" data-vol="${c.key}" aria-label="${c.label} volume"><output data-out="${c.key}"></output><button type="button" data-test="${c.key}">Test</button></div><p class="aud-hint">${c.hint}</p>`).join('');
 function showVolumes() { for (const c of CHANNELS) { const v = Math.round(getVolume(c.key) * 100); document.querySelector(`[data-vol="${c.key}"]`).value = v; document.querySelector(`[data-out="${c.key}"]`).textContent = v + '%'; } $('aud-mute').checked = isMuted(); }
@@ -480,6 +508,6 @@ showVolumes();
 applyGfx(false);
 $('form').addEventListener('submit', e => { e.preventDefault(); start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
-window.__woi = { shadowExtent: () => sun.shadow.camera.right, gfx, renderer, explode, flashes, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
+window.__woi = { flight, shadowExtent: () => sun.shadow.camera.right, gfx, renderer, explode, flashes, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
 frame();
 if (params.get('autostart')) start();

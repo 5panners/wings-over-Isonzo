@@ -47,9 +47,11 @@
   #tab-graphics .sliders { grid-template-columns: 1fr; gap: 12px; }
   .aud-row { display: grid; grid-template-columns: 170px minmax(0, 1fr) 46px auto; gap: 10px; align-items: center; padding: 8px 0 3px; font-size: 14px; font-weight: 600; }
   .aud-row output { text-align: right; font-weight: 400; font-variant-numeric: tabular-nums; }
+  #controls .presets { display: flex; gap: 8px; align-items: center; margin: 10px 0 2px; font-size: 13px; font-weight: 600; }
+  .aud-row.flt { grid-template-columns: 170px minmax(0, 1fr) 150px; } .aud-row.flt output { white-space: nowrap; }
   .aud-hint { margin: 0 0 4px; padding-bottom: 6px; border-bottom: 1px solid #d8cba6; font-size: 12px; color: #5b5444; }
   #controls label.check small { font-weight: 400; color: #5b5444; margin-left: 4px; }
-  @media (max-width: 560px) { .aud-row { grid-template-columns: minmax(0, 1fr) 46px auto; } .aud-row input { grid-column: 1 / -1; order: 5; } }
+  @media (max-width: 560px) { .aud-row.flt { grid-template-columns: minmax(0, 1fr) 140px; } .aud-row { grid-template-columns: minmax(0, 1fr) 46px auto; } .aud-row input { grid-column: 1 / -1; order: 5; } }
   #controls button { width: auto; margin: 0; padding: 6px 12px; font: 600 13px Inter, system-ui, sans-serif; background: #fbf6e6; color: #1d1b16; border: 1.5px solid #b9ab86; cursor: pointer; }
   #controls button:disabled { opacity: .45; cursor: default; }
   #controls button.primary { background: #1d1b16; color: #efe6cf; border-color: #1d1b16; padding: 8px 22px; }
@@ -82,7 +84,7 @@
 <body>
 <canvas id="c"></canvas>
 <canvas id="hud"></canvas>
-<div id="build" aria-label="Build number">Build 32</div>
+<div id="build" aria-label="Build number">Build 33</div>
 <div id="ui">
   <div id="score" class="panel"></div>
   <div id="stats" class="panel"></div>
@@ -129,6 +131,7 @@
   <h2>Options</h2>
   <div class="tabs" role="tablist">
     <button type="button" role="tab" data-tab="controls" class="on">Controls</button>
+    <button type="button" role="tab" data-tab="flight">Flight</button>
     <button type="button" role="tab" data-tab="graphics">Graphics</button>
     <button type="button" role="tab" data-tab="audio">Audio</button>
   </div>
@@ -140,6 +143,13 @@
       <p class="note">Low follows the aircraft tightly; high eases in and out. Also <b>,</b> and <b>.</b> in flight.</p></div>
     <h3>Controller</h3>
     <div id="controls-body"></div>
+  </div>
+  <div id="tab-flight" role="tabpanel" hidden>
+    <p class="note" style="margin:6px 0 0">These change how <b>your</b> aircraft handles. Bots always fly the standard model, so in a shared battle each pilot can pick their own.</p>
+    <div class="presets"><span>Presets</span><button type="button" data-preset="forgiving">Forgiving</button><button type="button" data-preset="standard">Standard</button><button type="button" data-preset="demanding">Demanding</button></div>
+    <label class="check" style="margin:8px 0 6px"><input id="flt-invert" type="checkbox"> Invert pitch <small>(push the stick forward to pull the nose up)</small></label>
+    <div id="flt-rows"></div>
+    <div class="foot"><button type="button" id="flt-reset">Restore defaults</button><button type="button" id="flt-close" class="primary">Done</button></div>
   </div>
   <div id="tab-audio" role="tabpanel" hidden>
     <label class="check"><input id="aud-mute" type="checkbox"> Mute all sound <small>(also M in flight)</small></label>

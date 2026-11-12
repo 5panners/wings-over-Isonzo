@@ -107,13 +107,13 @@ export function zoneAt(x, z) {
   const r = Math.random(); return r < 0.5 ? 'fuel' : r < 0.65 ? 'pilot' : 'body';   // fuselage
 }
 // Apply one hit to an aircraft we own. Returns messages for its pilot.
-export function takeHit(p, amount, where) {
+export function takeHit(p, amount, where, scale = 1) {   // scale: 1 / toughness
   const msgs = [], D = p.dmg;
   if (!where) where = zoneAt((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6);
-  p.hp -= amount;
-  if (where === 'pilot') { p.hp -= 8; msgs.push('Pilot wounded'); return msgs; }
+  p.hp -= amount * scale;
+  if (where === 'pilot') { p.hp -= 8 * scale; msgs.push('Pilot wounded'); return msgs; }
   if (where === 'body') return msgs;
-  const a = ZONE_HIT[where] * (0.7 + Math.random() * 0.6), was = D[where]; D[where] = Math.min(1, was + a);
+  const a = ZONE_HIT[where] * scale * (0.7 + Math.random() * 0.6), was = D[where]; D[where] = Math.min(1, was + a);
   if (was <= 0.3 && D[where] > 0.3) msgs.push(ZONE_TEXT[where][1]); else if (was <= 0.75 && D[where] > 0.75) msgs.push(ZONE_TEXT[where][2]);
   if (where === 'eng') {
     if (was < 1 && D.eng >= 1) msgs.push('Engine seized: no power');
@@ -179,16 +179,26 @@ function crashed(p) {
   return null;
 }
 
+// ---------- player flight options (Options > Flight) ----------
+// All 1 = the standard model. They apply to the player's own aircraft only; bots always fly the standard one.
+export const FLIGHT_DEFAULT = { invert: false, level: 0, pitch: 1, roll: 1, rudder: 1, stall: 1, top: 1, bleed: 1, tough: 1 };
+export const flight = { ...FLIGHT_DEFAULT };
+try { const s = JSON.parse(localStorage.getItem('woi-flight') || '{}'); for (const k in flight) if (typeof s[k] === typeof flight[k] && (typeof s[k] !== 'number' || Number.isFinite(s[k]))) flight[k] = s[k]; } catch { /* no storage */ }
+export function setFlight(patch) {
+  Object.assign(flight, patch);
+  try { localStorage.setItem('woi-flight', JSON.stringify(flight)); } catch { /* no storage */ }
+}
+
 // ---------- on the runway (ground handling after Home Skies 1917) ----------
 // steer = -1..1 left/right. Returns a crash reason or null; clears p.onGround at lift-off.
 function groundRoll(p, pitch, steer, input, dt) {
-  const t = TYPES[p.type], takeoff = t.stall * 1.1 * (1 + 0.3 * wingDamage(p));
+  const fo = input ? flight : FLIGHT_DEFAULT, t = TYPES[p.type], top = t.top * fo.top, takeoff = t.stall * fo.stall * 1.1 * (1 + 0.3 * wingDamage(p));
   if (input) p.throttle = input.throttleAbs != null ? input.throttleAbs : THREE.MathUtils.clamp(p.throttle + input.throttle * 0.7 * dt, 0, 1);
   p.heading -= steer * 0.9 * dt * THREE.MathUtils.clamp(p.speed / 8, 0.15, 1);
   // the tail comes up as speed builds; holding the stick back keeps the skid dragging on the grass
   let td = THREE.MathUtils.clamp(1.6 - p.speed / (takeoff * 0.55), 0, 1); if (pitch > 0.3 && p.speed < takeoff) td = Math.max(td, 0.7);
   const drag = p.speed > 0.05 ? 0.7 + 1.7 * td * (p.power > 0.2 ? 0.25 : 1) : 0;
-  p.speed = Math.max(0, p.speed + (p.power * KD * t.top * t.top * 0.3 - KD * p.speed * p.speed - drag) * dt);
+  p.speed = Math.max(0, p.speed + (p.power * KD * top * top * 0.3 - KD * p.speed * p.speed - drag) * dt);
   p.pos.x += Math.sin(p.heading) * p.speed * dt; p.pos.z += Math.cos(p.heading) * p.speed * dt;
   p.tail += (td * 0.19 - p.tail) * Math.min(1, 3 * dt);
   p.pos.y = H(p.pos.x, p.pos.z) + gearHeight(p.tail);
@@ -204,23 +214,25 @@ function groundRoll(p, pitch, steer, input, dt) {
 // Flight model ported from Home Skies 1917 (in-flight part, standard handling).
 // input = { pitch, roll, yaw (-1..1), throttle (-1..1 change), throttleAbs (0..1 or null), fire }
 export function flyPlayer(p, input, dt) {
-  const t = TYPES[p.type], q = p.quat, D = p.dmg, wing = wingDamage(p), stall = t.stall * (1 + 0.35 * wing);
+  const t = TYPES[p.type], fo = flight, top = t.top * fo.top, q = p.quat, D = p.dmg, wing = wingDamage(p), stall = t.stall * fo.stall * (1 + 0.35 * wing);
   if (p.onGround) return groundRoll(p, input.pitch, input.roll * 0.5 + input.yaw, input, dt);
   if (p.dying) return fallDying(p, dt);
   p.throttle = input.throttleAbs != null ? input.throttleAbs : THREE.MathUtils.clamp(p.throttle + input.throttle * 0.7 * dt, 0, 1);
   // control surfaces lose authority as the aircraft slows
   const auth = THREE.MathUtils.clamp((p.speed - 6) / (stall * 1.3), 0.12, 1);
-  q.multiply(q1.setFromAxisAngle(X, -input.pitch * t.pitch * (1 - 0.75 * D.tail) * auth * dt));
+  q.multiply(q1.setFromAxisAngle(X, -input.pitch * t.pitch * fo.pitch * (1 - 0.75 * D.tail) * auth * dt));
   // the less-damaged wing lifts more, so the aircraft keeps rolling toward the damaged side (negative = left)
-  q.multiply(q1.setFromAxisAngle(Z, (input.roll * t.roll * (1 - 0.6 * wing) + (D.wingR - D.wingL) * 0.55) * auth * dt));
+  q.multiply(q1.setFromAxisAngle(Z, (input.roll * t.roll * fo.roll * (1 - 0.6 * wing) + (D.wingR - D.wingL) * 0.55) * auth * dt));
   // rudder swings the nose and skids the flight path round with it, so it turns the aircraft flat without needing bank
-  const rud = -input.yaw * 0.8 * (1 - 0.75 * D.tail) * auth * dt;
+  const rud = -input.yaw * 0.8 * fo.rudder * (1 - 0.75 * D.tail) * auth * dt;
   q.multiply(q1.setFromAxisAngle(Y, rud));
   p.vdir.applyAxisAngle(v3.copy(Y).applyQuaternion(q), rud * 0.75);
   // rightY > 0 means the right wing is high (banked left)
   const rightY = -v1.copy(X).applyQuaternion(q).y, upY = v2.copy(Y).applyQuaternion(q).y;
   // a banked aircraft turns: coordinated-turn rate g * bank / speed
   if (upY > 0) q.premultiply(q1.setFromAxisAngle(Y, rightY * 1.5 * G / Math.max(p.speed, 18) * dt));
+  // optional wing levelling: with the stick released the wings roll back toward level (strength fo.level, 0 = off)
+  if (fo.level > 0 && Math.abs(input.roll) < 0.05 && upY > 0.2) q.multiply(q1.setFromAxisAngle(Z, rightY * 1.1 * fo.level * dt));
   // lift: the flight path can only bend as fast as the wings can pull, which grows with the square of speed
   const n = Math.min(4.5, (p.speed / stall) * (p.speed / stall));
   if (n < 1) p.sink = Math.min(11, p.sink + G * (1 - n) * dt);                                                              // stalled: sink
@@ -238,8 +250,8 @@ export function flyPlayer(p, input, dt) {
   if (swing > 0 && off > 1e-3) { q.premultiply(q1.identity().slerp(q2.setFromUnitVectors(p.fwd, p.vdir), Math.min(1, swing * dt / off))).normalize(); p.fwd.copy(Z).applyQuaternion(q); }
   // thrust, drag, weight along the flight path, and extra drag when the nose is pulled away from it
   if (p.power <= 0) p.speed -= 2.5 * dt;                                    // a stopped propeller is a brake
-  p.speed += (p.power * KD * t.top * t.top - KD * p.speed * p.speed - 15.5 * p.vdir.y - Math.sin(Math.min(ang, 0.7)) * 15) * dt;   // 15: how hard pulling the nose off the flight path bleeds speed (Home Skies used 26)
-  p.speed = THREE.MathUtils.clamp(p.speed, 0, t.top * 1.5);
+  p.speed += (p.power * KD * top * top - KD * p.speed * p.speed - 15.5 * p.vdir.y - Math.sin(Math.min(ang, 0.7)) * 15 * fo.bleed) * dt;   // 15: how hard pulling the nose off the flight path bleeds speed (Home Skies used 26)
+  p.speed = THREE.MathUtils.clamp(p.speed, 0, top * 1.5);
   p.pos.addScaledVector(p.vdir, p.speed * dt); p.pos.y -= p.sink * dt;
   p.firing = !!input.fire;
   return crashed(p);
