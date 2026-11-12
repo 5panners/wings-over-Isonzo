@@ -200,7 +200,7 @@ function frame() {
     V2.set(1, 0, 0).applyQuaternion(camera.quaternion);                                  // listener's right
     for (const p of planes.values()) {
       if (p === me || !p.alive || !running) continue;
-      V.copy(p.pos).sub(live ? me.pos : camera.position); const dist = V.length(); if (dist > 320) continue;
+      V.copy(p.pos).sub(live ? me.pos : camera.position); const dist = V.length(); if (dist > 450) continue;
       V.divideScalar(dist || 1);                                                         // unit vector from listener to source
       const vl = live ? me.vdir.dot(V) * me.speed : 0, vs = p.fwd.dot(V) * p.speed;       // each one's speed along that line
       list.push({ id: p.id, dist, doppler: THREE.MathUtils.clamp((SOUND_SPEED + vl) / (SOUND_SPEED + vs), 0.55, 1.9), pan: THREE.MathUtils.clamp(V.dot(V2), -1, 1) * 0.8 });

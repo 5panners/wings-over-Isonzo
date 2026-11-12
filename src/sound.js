@@ -7,7 +7,9 @@ export function startSound() {
   if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
   ctx = new AC();
-  master = ctx.createGain(); master.gain.value = muted ? 0 : 0.8; master.connect(ctx.destination);
+  master = ctx.createGain(); master.gain.value = muted ? 0 : 0.8; // a limiter after the mix, so loud passes and explosions do not distort
+  const limiter = ctx.createDynamicsCompressor(); limiter.threshold.value = -10; limiter.knee.value = 8; limiter.ratio.value = 8; limiter.attack.value = 0.004; limiter.release.value = 0.2;
+  master.connect(limiter); limiter.connect(ctx.destination);
   // two seconds of white noise, reused by wind, guns and explosions
   noise = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
   const d = noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -64,7 +66,8 @@ export function updateSound(alive, throttle, speed, topSpeed) {
   // set directly each frame with our own smoothing: scheduled changes to a looping sample's speed are ignored by some browsers
   eng.rate += (0.55 + throttle * 0.75 + k * 0.2 - eng.rate) * 0.12;
   if (eng.src) eng.src.playbackRate.value = eng.rate;
-  eng.g.gain.setTargetAtTime(alive ? 0.13 + throttle * 0.22 : 0, t, 0.12);
+  // our own engine ducks while another aircraft is close, so its pass is heard over ours
+  eng.g.gain.setTargetAtTime(alive ? (0.13 + throttle * 0.22) * (1 - 0.6 * duck) : 0, t, 0.08);
   wind.bp.frequency.setTargetAtTime(300 + k * 900, t, 0.2);
   wind.g.gain.setTargetAtTime(alive ? Math.min(0.22, 0.03 + k * k * 0.1) : 0.02, t, 0.2);
 }
@@ -75,7 +78,7 @@ export function updateSound(alive, throttle, speed, topSpeed) {
 //   pan     -1 (left) .. 1 (right)
 // The nearest few get a voice each. As one sweeps past, volume peaks and the pitch drops: the whizz.
 const VOICES = 4, voices = [];
-let rush = null;
+let rush = null, duck = 0;        // duck: 0..1, how close the nearest other aircraft is
 export function updateOthers(list) {
   if (!ctx || !voices.length) return;
   if (!rush) {                                                     // air rush layered on a close pass
@@ -90,13 +93,14 @@ export function updateOthers(list) {
     let v = voices.find(x => x.id === o.id) || voices.find(x => x.id === null && x.vol < 0.01) || voices.find(x => x.id === null);
     if (!v) continue;
     if (v.id !== o.id) { v.id = o.id; v.rate = 1.15 * o.doppler; }
-    const vol = 0.55 / (1 + (o.dist / 40) * (o.dist / 40)) * Math.max(0, 1 - o.dist / 320);
+    const vol = 1.7 / (1 + (o.dist / 95) * (o.dist / 95)) * Math.max(0, 1 - o.dist / 450);      // loud inside ~100 m, audible to ~400 m
     v.vol += (vol - v.vol) * 0.25; v.rate += (1.15 * o.doppler - v.rate) * 0.3;
     v.g.gain.value = v.vol; v.src.playbackRate.value = v.rate; if (v.pan) v.pan.pan.value = o.pan;
-    const c = Math.max(0, 1 - o.dist / 45); if (c > close) { close = c; closeRate = o.doppler; }
+    const c = Math.max(0, 1 - o.dist / 130); if (c > close) { close = c; closeRate = o.doppler; }
   }
   for (const v of voices) if (v.id === null && v.vol > 0) { v.vol *= 0.8; if (v.vol < 0.002) v.vol = 0; v.g.gain.value = v.vol; }
-  rush.vol += (close * close * 0.35 - rush.vol) * 0.3; rush.g.gain.value = rush.vol; rush.bp.frequency.value = 900 * closeRate;
+  duck += (close - duck) * 0.3;
+  rush.vol += (close * close * 1.1 - rush.vol) * 0.3; rush.g.gain.value = rush.vol; rush.bp.frequency.value = 900 * closeRate;
 }
 export const otherVoices = () => voices.map(v => ({ id: v.id, vol: +v.vol.toFixed(3), rate: +v.rate.toFixed(2) }));   // for tests
 
