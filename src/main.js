@@ -65,7 +65,7 @@ function explode(pos) {
 // ---------------- game state ----------------
 const planes = new Map();
 const score = { it: 0, ah: 0 };
-let onRunway = false;      // start (and restart) on the runway instead of in the air; the host's choice also applies to its bots
+let onRunway = true;       // start (and restart) on the runway instead of in the air; the host's choice also applies to its bots
 let me = null, net = null, teamSize = 4, roundEndAt = 0, nextSend = 0, nextBotCheck = 0, running = false, oobSince = 0;
 const feed = [];
 const isHost = () => !net || [net.id, ...net.peers].sort()[0] === net.id;

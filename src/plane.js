@@ -25,7 +25,9 @@ export const BOT_LEVELS = [
 export const botSettings = { level: 0 };   // rookie by default
 // Take-off direction along each strip (+1 / -1 along its length) so both sides roll toward the front.
 const RUNWAY_DIR = { it: 1, ah: -1 }, spawnCount = { it: 0, ah: 0 };
-const GEAR = 1.5;                       // height of the aircraft's centre above the ground when standing on its wheels
+// Height of the aircraft's centre above the ground when its wheels are down. The wheels hang 1.51 below the centre and
+// 1.6 ahead of it, so as the tail rises (tail = pitch in radians) they lower toward the full 1.51.
+const gearHeight = tail => 1.51 * Math.cos(tail) - 1.6 * Math.sin(tail);
 // Observation balloons: solid obstacles. Envelope and basket are treated as spheres, the cable as a line to the winch.
 export const BALLOONS = SECTORS.map(s => { const gy = H(s.x, s.z); return { x: s.x, y: gy + s.alt, z: s.z, r: 10.5, basketY: gy + s.alt - 20, wx: s.x + 9, wy: H(s.x + 9, s.z + 7) + 2.5, wz: s.z + 7 }; });
 export const COLLIDE_RADIUS = 4.2;     // two aircraft closer than this have hit each other
@@ -57,7 +59,7 @@ export class Plane {
       const slot = spawnCount[this.team]++ % 6, along = (-88 + Math.floor(slot / 3) * 16) * dir, across = 14 + (slot % 3 - 1) * 9;
       const c = Math.cos(-f.rot), s = Math.sin(-f.rot);
       this.pos.set(f.x + along * c + across * s, 0, f.z - along * s + across * c);
-      this.pos.y = H(this.pos.x, this.pos.z) + GEAR;
+      this.pos.y = H(this.pos.x, this.pos.z) + gearHeight(0.19);
       this.heading = Math.PI / 2 - f.rot + (dir < 0 ? Math.PI : 0);
       this.quat.setFromAxisAngle(Y, this.heading).multiply(q1.setFromAxisAngle(X, -0.19));
       this.speed = 0; this.throttle = this.isBot ? 1 : 0; this.tail = 0.19;
@@ -188,8 +190,8 @@ function groundRoll(p, pitch, steer, input, dt) {
   const drag = p.speed > 0.05 ? 0.7 + 1.7 * td * (p.power > 0.2 ? 0.25 : 1) : 0;
   p.speed = Math.max(0, p.speed + (p.power * KD * t.top * t.top * 0.3 - KD * p.speed * p.speed - drag) * dt);
   p.pos.x += Math.sin(p.heading) * p.speed * dt; p.pos.z += Math.cos(p.heading) * p.speed * dt;
-  p.pos.y = H(p.pos.x, p.pos.z) + GEAR;
   p.tail += (td * 0.19 - p.tail) * Math.min(1, 3 * dt);
+  p.pos.y = H(p.pos.x, p.pos.z) + gearHeight(p.tail);
   p.quat.setFromAxisAngle(Y, p.heading).multiply(q1.setFromAxisAngle(X, -p.tail));
   p.fwd.copy(Z).applyQuaternion(p.quat); p.vdir.set(Math.sin(p.heading), 0, Math.cos(p.heading)); p.sink = 0;
   if (input) p.firing = !!input.fire;

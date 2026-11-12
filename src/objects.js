@@ -176,9 +176,9 @@ export function buildObjects(scene) {
     const apron = mk(B(150, 0.1, 16), '#cdbf92', 0, 0.15, -14); apron.castShadow = false; g.add(apron);
     for (let i = 0; i < 6; i++) ad(hangar(key), -62 + i * 22, -32, 0);
     const types = key === 'it' ? [SPAD, SPAD, NIEUPORT, HANRIOT, SPAD, NIEUPORT, HANRIOT, SPAD] : [ALBATROS, ALBATROS, PHONIX, ALBATROS, PHONIX, ALBATROS, ALBATROS, PHONIX];
-    types.forEach((T, i) => { const p = T(false); p.rotation.order = 'YXZ'; p.rotation.set(-0.2, 0.25, 0); p.position.set(-66 + i * 11.5, 1.55, -12); g.add(p); });
+    types.forEach((T, i) => { const p = T(false); p.rotation.order = 'YXZ'; p.rotation.set(-0.2, 0.25, 0); p.position.set(-66 + i * 11.5, 1.38, -12); g.add(p); });
     if (key === 'it') for (const x of [44, 66]) { const c = CAPRONI(false); c.rotation.order = 'YXZ'; c.rotation.set(-0.1, 0.1, 0); c.position.set(x, 2.25, -11); g.add(c); }
-    else for (const x of [40, 54, 68]) { const p = ALBATROS(false); p.rotation.order = 'YXZ'; p.rotation.set(-0.2, -0.3, 0); p.position.set(x, 1.55, -11); g.add(p); }
+    else for (const x of [40, 54, 68]) { const p = ALBATROS(false); p.rotation.order = 'YXZ'; p.rotation.set(-0.2, -0.3, 0); p.position.set(x, 1.38, -11); g.add(p); }
     ad(flag(key), -84, -24); ad(windsock(), 96, -6); ad(windsock(), -108, 34);
     for (let i = 0; i < 12; i++) ad(tent(key === 'it' ? '#e8e0c4' : '#d8d2b6'), -100 + (i % 6) * 5.5, -44 - Math.floor(i / 6) * 5.5);
     for (let i = 0; i < 3; i++) ad(truck(key === 'it' ? '#6c7758' : '#5c6656'), 82 + i * 5, -30, 0.2);

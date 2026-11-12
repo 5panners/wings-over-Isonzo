@@ -20,7 +20,7 @@ Open http://localhost:8080. Any static file server works; the game is plain ES m
 
 - **Solo:** leave the squadron password empty. Bots fill both sides.
 - **Multiplayer:** everyone enters the same squadron password. Up to 6 pilots per side; bots fill the remaining seats up to "Pilots per side".
-- **Start:** in the air over your airfield, or on the runway. On the runway, open the throttle, let the tail come up, and ease the stick back at flying speed. Bots take off too when the host starts on the runway.
+- **Start:** on the runway (the default), or in the air over your airfield. On the runway, open the throttle, let the tail come up, and ease the stick back at flying speed. Bots take off too when the host starts on the runway.
 - **Balloons:** the observation balloons, their baskets and cables are solid; flying into one destroys the aircraft.
 - **Bots:** Rookie (the default), Regular or Ace, or no bots at all, chosen in the lobby. In multiplayer the host's choice applies.
 - **Collisions:** two aircraft that touch are both destroyed, so don't ram.
