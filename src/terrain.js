@@ -1,6 +1,6 @@
 // Terrain, water, sky, trees and clouds for the Isonzo Front map (flat-shaded, no textures).
 import * as THREE from 'three';
-import { sst, lerp, rnd, fbm, hash2, H, riverX, riverLevel, riverHalf, coastZ, AIRFIELDS, TOWNS, TARGETS } from './world.js';
+import { sst, lerp, rnd, fbm, hash2, H, riverX, riverLevel, riverHalf, inland, AIRFIELDS, TOWNS, TARGETS } from './world.js';
 
 export function buildTerrain(scene) {
 const HAZE = new THREE.Color('#c9dbe6');
@@ -19,7 +19,7 @@ const hemi = new THREE.HemisphereLight('#cfe4ff', '#8a7a55', 1.25); scene.add(he
 const sun = new THREE.DirectionalLight('#fff0d2', 2.6); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0002; sun.shadow.normalBias = 0.3; scene.add(sun, sun.target);
 
 // ---------- terrain ----------
-const SIZE = 1950, N = 260, cell = SIZE / N;
+const SIZE_X = 2850, SIZE_Z = 1950, NX = 380, NZ = 260, cell = SIZE_X / NX;   // covers the land out past both coasts
 const C = h => new THREE.Color(h);
 const PAL = {
   fields: ['#8db552', '#a2c35a', '#79a547', '#d8c66a', '#b38b5c', '#94ba58', '#c4d06f', '#6f9c44', '#e0cf7a'].map(C),
@@ -29,7 +29,7 @@ const PAL = {
 function inField(f, x, z, a, b) { const c = Math.cos(f.rot), s = Math.sin(f.rot), dx = x - f.x, dz = z - f.z; const u = dx * c + dz * s, v = -dx * s + dz * c; return Math.abs(u) < a && Math.abs(v) < b; }
 function zone(x, z, y, ny) { // classify ground
   const r = riverX(z), d = x - r, ad = Math.abs(d), lvl = riverLevel(z), rw = riverHalf(z), slope = 1 - ny, rel = y - lvl;
-  if (y < 1.2 && z > coastZ(x) - 45) return 'sand';
+  if (y < 1.9 && inland(x, z) < 70) return 'sand';
   if (ad < rw + 7 && rel < 2.4) return rel < -0.5 ? 'bed' : 'gravel';
   if (slope > (y - lvl < 120 ? 0.5 : 0.36)) return 'rock';
   const n = fbm(x * 0.02, z * 0.02, 2);
@@ -42,9 +42,9 @@ function zone(x, z, y, ny) { // classify ground
   return n > 0.12 && slope < 0.1 ? 'meadow' : 'forest';
 }
 {
-  const pos = [], col = [], hs = new Float32Array((N + 1) * (N + 1));
-  for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) hs[j * (N + 1) + i] = H(-SIZE / 2 + i * cell, -SIZE / 2 + j * cell);
-  const v = (i, j) => new THREE.Vector3(-SIZE / 2 + i * cell, hs[j * (N + 1) + i], -SIZE / 2 + j * cell);
+  const pos = [], col = [], hs = new Float32Array((NX + 1) * (NZ + 1));
+  for (let j = 0; j <= NZ; j++) for (let i = 0; i <= NX; i++) hs[j * (NX + 1) + i] = H(-SIZE_X / 2 + i * cell, -SIZE_Z / 2 + j * cell);
+  const v = (i, j) => new THREE.Vector3(-SIZE_X / 2 + i * cell, hs[j * (NX + 1) + i], -SIZE_Z / 2 + j * cell);
   const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), nn = new THREE.Vector3(), c = new THREE.Color();
   const tri = (a, b, d, k) => {
     e1.subVectors(b, a); e2.subVectors(d, a); nn.crossVectors(e1, e2).normalize();
@@ -59,7 +59,7 @@ function zone(x, z, y, ny) { // classify ground
     c.offsetHSL(0, 0, (j - 0.5) * 0.06);
     for (const p of [a, b, d]) { pos.push(p.x, p.y, p.z); col.push(c.r, c.g, c.b); }
   };
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+  for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
     const a = v(i, j), b = v(i + 1, j), d = v(i, j + 1), e = v(i + 1, j + 1);
     if ((i + j) & 1) { tri(a, d, b, 0); tri(b, d, e, 1); } else { tri(a, d, e, 0); tri(a, e, b, 1); }
   }
@@ -108,7 +108,12 @@ const waterMaterial = (river, shallow, deep) => new THREE.ShaderMaterial({
         depth = 1.0 - smoothstep(0.35, 1.0, e);
         foam = smoothstep(0.84, 1.0, e) * step(0.5, h2) * 0.45;                              // broken white water along the gravel
       } else {
-        float d = vWorld.z - (545.0 + 28.0 * sin(vWorld.x / 170.0 + 1.0) - 60.0 * smoothstep(60.0, 400.0, vWorld.x));   // distance offshore
+        // distance offshore from the nearest of the three coasts (same formulas as coastZ / coastW / coastE in world.js)
+        float x = vWorld.x, z = vWorld.z;
+        float cS = 545.0 + 28.0 * sin(x / 170.0 + 1.0) - 60.0 * smoothstep(60.0, 400.0, x) + 16.0 * sin(x / 63.0 + 2.2) + 34.0 * sin(x / 410.0 + 0.4);
+        float cW = -1235.0 + 85.0 * sin(z / 230.0 + 0.7) + 48.0 * sin(z / 97.0 + 2.1) + 24.0 * sin(z / 41.0 + 4.0) + 60.0 * sin(z / 560.0 + 1.3);
+        float cE = 1240.0 + 80.0 * sin(z / 205.0 + 3.9) + 52.0 * sin(z / 88.0 + 0.6) + 22.0 * sin(z / 37.0 + 1.7) + 65.0 * sin(z / 610.0 + 5.2);
+        float d = -min(cS - z, min(x - cW, cE - x));
         depth = smoothstep(0.0, 170.0, d);
         foam = smoothstep(0.72, 1.0, sin(d * 0.5 - uTime * 1.2 + h1 * 1.6)) * (1.0 - smoothstep(2.0, 38.0, d)) * step(-14.0, d) * 0.85;   // surf lines
       }
@@ -164,8 +169,8 @@ for (const [R, hh, colr, sd] of [[1750, 420, '#8fa9bf', 3], [2500, 620, '#a9c0d2
   const ico = new THREE.IcosahedronGeometry(1, 0); ico.translate(0, 0.9, 0);
   const A = [], Bk = [];
   const near = (x, z) => TOWNS.some(t => (x - t.x) ** 2 + (z - t.z) ** 2 < (t.r + 3) ** 2) || TARGETS.some(t => (x - t.x) ** 2 + (z - t.z) ** 2 < (t.kind === 'battery' ? 1100 : 500)) || inField(AIRFIELDS.it, x, z, 150, 75) || inField(AIRFIELDS.ah, x, z, 150, 75);
-  for (let i = 0; i < 90000; i++) {
-    const x = (rnd() - 0.5) * 1900, z = (rnd() - 0.5) * 1900, y = H(x, z);
+  for (let i = 0; i < 130000; i++) {
+    const x = (rnd() - 0.5) * 2800, z = (rnd() - 0.5) * 1900, y = H(x, z);
     const e = 2, ny = 1 / Math.hypot((H(x + e, z) - H(x - e, z)) / (2 * e), 1, (H(x, z + e) - H(x, z - e)) / (2 * e));
     const zn = zone(x, z, y, ny); if (near(x, z)) continue;
     const dens = fbm(x * 0.012 + 40, z * 0.012, 2);

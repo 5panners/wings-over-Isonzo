@@ -1,6 +1,6 @@
 // Aircraft types, arcade flight model and bot pilot.
 import * as THREE from 'three';
-import { H, AIRFIELDS, HALF, SECTORS } from './world.js';
+import { H, AIRFIELDS, HALF, HALF_X, SECTORS } from './world.js';
 import { SPAD, ALBATROS } from './objects.js';
 
 // One fighter per side for now; add entries here to add aircraft.
@@ -173,7 +173,7 @@ function crashed(p) {
     const u = THREE.MathUtils.clamp(v2.dot(v1) / v1.lengthSq(), 0, 1);
     if (v2.addScaledVector(v1, -u).lengthSq() < 1.8 * 1.8) return 'balloon';
   }
-  if (Math.abs(p.pos.x) > HALF + 220 || Math.abs(p.pos.z) > HALF + 220) return 'bounds';
+  if (Math.abs(p.pos.x) > HALF_X + 220 || Math.abs(p.pos.z) > HALF + 220) return 'bounds';
   return null;
 }
 
@@ -195,7 +195,7 @@ function groundRoll(p, pitch, steer, input, dt) {
   if (input) p.firing = !!input.fire;
   if ((p.speed >= takeoff && pitch > 0.1 && td < 0.5) || p.speed > takeoff * 1.4) p.onGround = false;      // unstick
   if (p.pos.y < 1.2) return 'ground';                                                                    // rolled into the sea
-  return Math.abs(p.pos.x) > HALF + 220 || Math.abs(p.pos.z) > HALF + 220 ? 'bounds' : null;
+  return Math.abs(p.pos.x) > HALF_X + 220 || Math.abs(p.pos.z) > HALF + 220 ? 'bounds' : null;
 }
 
 // ---------- human pilot ----------
@@ -286,7 +286,7 @@ export function flyBot(p, planes, now, dt) {
   // give the observation balloons and their cables a wide berth
   for (const b of BALLOONS) { const dx = p.pos.x - b.x, dz = p.pos.z - b.z, d2 = dx * dx + dz * dz; if (d2 < 45 * 45 && p.pos.y < b.y + 30) { const d = Math.sqrt(d2) || 1; goal.x += dx / d * 1.8; goal.z += dz / d * 1.8; } }
   // stay inside the map, below the ceiling, and off the mountains
-  if (Math.abs(p.pos.x) > HALF - 20 || Math.abs(p.pos.z) > HALF - 20) goal.set(-p.pos.x, 0.1, -p.pos.z).normalize();
+  if (Math.abs(p.pos.x) > HALF_X - 20 || Math.abs(p.pos.z) > HALF - 20) goal.set(-p.pos.x, 0.1, -p.pos.z).normalize();
   if (p.pos.y > CEILING - 60) goal.y = Math.min(goal.y, -0.15);
   for (const look of [1.2, 2.8]) {
     v2.copy(p.pos).addScaledVector(p.fwd, p.speed * look);

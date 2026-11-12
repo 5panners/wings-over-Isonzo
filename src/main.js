@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { buildTerrain } from './terrain.js';
 import { createDayNight } from './daynight.js';
 import { buildObjects } from './objects.js';
-import { AIRFIELDS, SECTORS, riverX, HALF, H } from './world.js';
+import { AIRFIELDS, SECTORS, riverX, HALF, HALF_X, H, coastZ, coastW, coastE } from './world.js';
 import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, BOT_LEVELS, botSettings, COLLIDE_RADIUS, ZONE_TEXT, zoneAt, takeHit, systems, startDying, flyPlayer, flyBot, flyRemote } from './plane.js';
 import { connect } from './net.js';
 import { startSound, updateSound, updateOthers, toggleMute, isMuted, gunSound, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
@@ -271,7 +271,7 @@ function step(t, dt) {
   if (roundEndAt && isHost() && t > roundEndAt) { score.it = score.ah = 0; roundEndAt = 0; for (const p of planes.values()) if (p.local) { p.alive = false; p.respawnAt = t + 1; } }
   if (!isHost()) roundEndAt = Math.max(score.it, score.ah) >= SCORE_LIMIT ? 1 : 0;
   // out of bounds warning
-  const out = me.alive && (Math.abs(me.pos.x) > HALF || Math.abs(me.pos.z) > HALF);
+  const out = me.alive && (Math.abs(me.pos.x) > HALF_X || Math.abs(me.pos.z) > HALF);
   oobSince = out ? (oobSince || t) : 0;
   if (net && t > nextSend) { nextSend = t + 1 / SEND_HZ; net.send(packState()); }
 }
@@ -376,12 +376,19 @@ function drawHud(t) {
     for (let i = 0, n = Math.floor(me.dmg.eng * 16); i < n; i++) { const o = OIL[i]; ctx.beginPath(); ctx.ellipse(o[0] * W, o[1] * Hh, o[2] * Hh, o[2] * Hh * o[3], o[4], 0, 6.3); ctx.fill(); }
   }
   // minimap
-  const R = 84, cx = W - R - 18, cy = Hh - R - 18, m = (x, z) => [cx + x / 700 * R, cy + z / 700 * R];
-  ctx.fillStyle = 'rgba(16,22,28,.72)'; ctx.fillRect(cx - R, cy - R, R * 2, R * 2); ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1; ctx.strokeRect(cx - R, cy - R, R * 2, R * 2);
+  const RX = 132, RZ = 72, cx = W - RX - 18, cy = Hh - RZ - 18, K = RX / 1300, m = (x, z) => [cx + x * K, cy + z * K];   // 1300 units east-west, 700 north-south
+  ctx.fillStyle = 'rgba(20,60,84,.8)'; ctx.fillRect(cx - RX, cy - RZ, RX * 2, RZ * 2);                               // sea
+  ctx.save(); ctx.beginPath(); ctx.rect(cx - RX, cy - RZ, RX * 2, RZ * 2); ctx.clip();
+  ctx.fillStyle = 'rgba(58,84,52,.9)'; ctx.beginPath();                                                              // land, traced round the three coasts
+  for (let z = -720; z <= 700; z += 40) { const q = m(coastW(z), Math.min(z, coastZ(coastW(z)))); z === -720 ? ctx.moveTo(...q) : ctx.lineTo(...q); }
+  for (let x = -1300; x <= 1300; x += 40) if (x > coastW(coastZ(x)) && x < coastE(coastZ(x))) ctx.lineTo(...m(x, coastZ(x)));
+  for (let z = 700; z >= -720; z -= 40) ctx.lineTo(...m(coastE(z), Math.min(z, coastZ(coastE(z)))));
+  ctx.closePath(); ctx.fill(); ctx.restore();
+  ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1; ctx.strokeRect(cx - RX, cy - RZ, RX * 2, RZ * 2);
   ctx.strokeStyle = '#35c9ae'; ctx.lineWidth = 2.5; ctx.beginPath(); for (let z = -690; z <= 560; z += 30) { const q = m(riverX(z), z); z === -690 ? ctx.moveTo(...q) : ctx.lineTo(...q); } ctx.stroke();
   for (const key of ['it', 'ah']) { const q = m(AIRFIELDS[key].x, AIRFIELDS[key].z); ctx.fillStyle = TEAM_COLOR[key]; ctx.fillRect(q[0] - 6, q[1] - 3, 12, 6); }
   ctx.fillStyle = 'rgba(255,255,255,.55)'; for (const s of SECTORS) { const q = m(s.x, s.z); ctx.beginPath(); ctx.arc(q[0], q[1], 2.5, 0, 6.3); ctx.fill(); }
-  for (const p of planes.values()) { if (!p.alive) continue; const q = m(THREE.MathUtils.clamp(p.pos.x, -690, 690), THREE.MathUtils.clamp(p.pos.z, -690, 690)); ctx.fillStyle = p === me ? '#fff' : TEAM_COLOR[p.team]; ctx.beginPath(); ctx.arc(q[0], q[1], p === me ? 4 : 3, 0, 6.3); ctx.fill(); if (p === me) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(...q); ctx.lineTo(q[0] + me.fwd.x * 11, q[1] + me.fwd.z * 11); ctx.stroke(); } }
+  for (const p of planes.values()) { if (!p.alive) continue; const q = m(THREE.MathUtils.clamp(p.pos.x, -1290, 1290), THREE.MathUtils.clamp(p.pos.z, -690, 690)); ctx.fillStyle = p === me ? '#fff' : TEAM_COLOR[p.team]; ctx.beginPath(); ctx.arc(q[0], q[1], p === me ? 4 : 3, 0, 6.3); ctx.fill(); if (p === me) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(...q); ctx.lineTo(q[0] + me.fwd.x * 11, q[1] + me.fwd.z * 11); ctx.stroke(); } }
   // text panels
   let it = 0, ah = 0; for (const p of planes.values()) p.team === 'it' ? it++ : ah++;
   $('score').innerHTML = `<span style="color:${TEAM_COLOR.it}">Italy ${score.it}</span><small>first to ${SCORE_LIMIT} · ${it} v ${ah}</small><span style="color:${TEAM_COLOR.ah}">${score.ah} Austria-Hungary</span>`;

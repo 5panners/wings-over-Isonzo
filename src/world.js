@@ -20,11 +20,18 @@ export function ridged(x, y, o = 4) { let a = 0.6, s = 0, f = 1, w = 1; for (let
 export const hash2 = (i, j) => { let h = (i * 374761393 + j * 668265263) ^ 0x5bd1e995; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
 // ---- geography ----
-export const HALF = 600;                 // gameplay bounds ±600 (≈ 12 km square, arcade-compressed)
+export const HALF = 600;                 // combat area reaches ±600 north-south
+export const HALF_X = 1080;              // and ±1080 east-west, out to the coasts
 export const riverX = z => -20 + 70 * Math.sin(z / 160 + 0.5) + 35 * Math.sin(z / 70 + 2);
 export const riverLevel = z => Math.max(0, (520 - z) / 1420 * 62);
 export const riverHalf = z => lerp(5, 13, sst(-500, 400, z));
-export const coastZ = x => 545 + 28 * Math.sin(x / 170 + 1) - 60 * sst(60, 400, x);
+// Coastlines. The land is bounded by sea to the south, west and east. Each coast is a sum of unrelated sine
+// waves, which gives an irregular run of bays and headlands and can be repeated exactly in the water shader.
+export const coastZ = x => 545 + 28 * Math.sin(x / 170 + 1) - 60 * sst(60, 400, x) + 16 * Math.sin(x / 63 + 2.2) + 34 * Math.sin(x / 410 + 0.4);   // south coast: z of the shore at x
+export const coastW = z => -1235 + 85 * Math.sin(z / 230 + 0.7) + 48 * Math.sin(z / 97 + 2.1) + 24 * Math.sin(z / 41 + 4.0) + 60 * Math.sin(z / 560 + 1.3);   // west coast: x of the shore at z
+export const coastE = z => 1240 + 80 * Math.sin(z / 205 + 3.9) + 52 * Math.sin(z / 88 + 0.6) + 22 * Math.sin(z / 37 + 1.7) + 65 * Math.sin(z / 610 + 5.2);    // east coast
+// How far inland a point is from the nearest coast (negative = out at sea)
+export const inland = (x, z) => Math.min(coastZ(x) - z, x - coastW(z), coastE(z) - x);
 
 export const AIRFIELDS = {
   it: { x: -430, z: 255, rot: 0.32, name: 'Campo Santa Caterina', side: 'it' },
@@ -90,9 +97,8 @@ export function H(x, z) {
   const zb = z + 46 * fbm(x * 0.007 + 2, z * 0.007 + 7, 2), zc = z + 40 * fbm(x * 0.008 - 4, z * 0.008 + 1, 2);
   const bains = east * sst(150, 40, zb) * (108 + 42 * fbm(x * 0.009 + 5, z * 0.009, 3));
   const carso = sst(26, 120, d) * sst(252, 335, zc) * (44 + 16 * fbm(x * 0.012, z * 0.012 + 9, 3));
-  const carsoLow = lerp(sst(coastZ(x) - 30, coastZ(x) - 110, z), 1, sst(120, 260, x));
   const collio = sst(-520, -330, x) * sst(-40, -130, d) * sst(190, 90, z) * (16 + 16 * fbm(x * 0.013 + 3, z * 0.013, 3));
-  let h = lvl + 4 + 2.2 * n1 + Math.max(alps, bains, carso * carsoLow, collio);
+  let h = lvl + 4 + 2.2 * n1 + Math.max(alps, bains, carso, collio);
   for (const p of PEAKS) { const c = Math.cos(p.rot || 0), sn = Math.sin(p.rot || 0), dx = x - p.x, dz = z - p.z, u = (dx * c + dz * sn) / (p.s * (p.el || 1)), v = (-dx * sn + dz * c) / p.s, q = u * u + v * v; if (q < 6) h += p.a * Math.exp(-q) * (0.85 + 0.3 * ridged(x * 0.009, z * 0.009, 2)); }
   // river valley
   const w = lerp(20, 44, sst(-480, 320, z));
@@ -103,7 +109,9 @@ export function H(x, z) {
   // airfields
   for (const k in AIRFIELDS) { const f = AIRFIELDS[k]; h = flat(h, { rot: f.rot, dx: x - f.x, dz: z - f.z }, riverLevel(f.z) + 5.5); }
   // sea
-  const cz = coastZ(x);
-  h = lerp(h, -7, sst(cz - 22, cz + 26, z));
+  // coasts: the land sinks toward every shore, flattening into a beach just above the waterline, then drops under the sea
+  const s = inland(x, z);
+  h = 1.1 + (h - 1.1) * Math.pow(sst(0, 230, s), 0.85);
+  h = lerp(h, -7, sst(10, -30, s));
   return h;
 }
