@@ -80,6 +80,10 @@ The flight model and chase camera come from Home Skies 1917:
 - Below stall speed the aircraft sinks and drops its nose; let it dive to recover.
 - The camera sits behind and above and always keeps the horizon level. How lazily it follows is the "Camera smoothing" slider on the Controls tab of Options.
 
+### Audio options
+
+Options has an Audio tab with a volume slider for each kind of sound: master, your engine, other aircraft (their engines and the fly-by whizz), wind, guns, hits and explosions. Each runs from silent to double the designed level, has a Test button, and is saved in the browser. A Mute checkbox does the same as `M`.
+
 ### Graphics options
 
 Options has a Graphics tab: shadows on or off, shadow distance (how far from your aircraft shadows reach when you are high), and rendering scale (the resolution the 3D view is drawn at; lower is faster). Settings are saved in the browser. Adding `?shadows=0` to the URL also turns shadows off.

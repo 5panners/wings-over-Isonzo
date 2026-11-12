@@ -6,7 +6,7 @@ import { buildObjects } from './objects.js';
 import { AIRFIELDS, SECTORS, riverX, HALF, HALF_X, H, coastZ, coastW, coastE } from './world.js';
 import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, BOT_LEVELS, botSettings, COLLIDE_RADIUS, ZONE_TEXT, zoneAt, takeHit, systems, startDying, flyPlayer, flyBot, flyRemote } from './plane.js';
 import { connect } from './net.js';
-import { startSound, updateSound, updateOthers, toggleMute, isMuted, gunSound, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
+import { startSound, updateSound, updateOthers, toggleMute, setMuted, isMuted, CHANNELS, getVolume, setVolume, resetVolumes, previewSound, gunSound, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
 import { pollGamepad, updateControls, initControls, toggleControls, controlsOpen } from './gamepad.js';
 
 const MAX_PER_TEAM = 6, SCORE_LIMIT = 30, RESPAWN = 5, SEND_HZ = 15;
@@ -165,7 +165,7 @@ function manageBots() {
 
 // ---------------- input ----------------
 const keys = new Set(); let mouseFire = false;
-addEventListener('keydown', e => { if (e.code === 'Escape' && (running || controlsOpen())) return toggleControls(); if (controlsOpen()) return; startSound(); if (running && (e.code === 'Comma' || e.code === 'Period')) { setCamEase(camEase + (e.code === 'Period' ? 0.1 : -0.1)); say(`Camera smoothing ${Math.round(camEase * 100)}%`); } if (e.code === 'KeyM' && running) say(toggleMute() ? 'Sound off' : 'Sound on');
+addEventListener('keydown', e => { if (e.code === 'Escape' && (running || controlsOpen())) return toggleControls(); if (controlsOpen()) return; startSound(); if (running && (e.code === 'Comma' || e.code === 'Period')) { setCamEase(camEase + (e.code === 'Period' ? 0.1 : -0.1)); say(`Camera smoothing ${Math.round(camEase * 100)}%`); } if (e.code === 'KeyM' && running) { say(toggleMute() ? 'Sound off' : 'Sound on'); $('aud-mute').checked = isMuted(); }
   if (running && (e.code === 'BracketLeft' || e.code === 'BracketRight')) { if (isHost()) { sky.tod = (sky.tod + (e.code === 'BracketRight' ? 1 : 23)) % 24; say('Time set to ' + sky.clock()); } else say('Only the host can change the time'); }
   keys.add(e.code); if (running && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); });
 addEventListener('keyup', e => keys.delete(e.code));
@@ -445,11 +445,12 @@ async function start() {
 initControls();
 setCamEase(camEase);
 $('camease').addEventListener('input', e => setCamEase(e.target.value / 100));
-$('open-controls').addEventListener('click', () => toggleControls(true));
+$('open-controls').addEventListener('click', () => { startSound(); toggleControls(true); });
 // options dialog: tabs
 for (const tab of document.querySelectorAll('#controls .tabs button')) tab.addEventListener('click', () => {
   for (const t of document.querySelectorAll('#controls .tabs button')) t.classList.toggle('on', t === tab);
-  $('tab-controls').hidden = tab.dataset.tab !== 'controls'; $('tab-graphics').hidden = tab.dataset.tab !== 'graphics';
+  for (const name of ['controls', 'graphics', 'audio']) $('tab-' + name).hidden = tab.dataset.tab !== name;
+  if (tab.dataset.tab === 'audio') startSound();
 });
 // options dialog: graphics
 const noShadowsUrl = params.get('shadows') === '0';
@@ -467,6 +468,15 @@ $('gfx-shadowdist').addEventListener('input', e => { gfx.shadowDist = +e.target.
 $('gfx-scale').addEventListener('input', e => { gfx.scale = e.target.value / 100; applyGfx(); });
 $('gfx-reset').addEventListener('click', () => { Object.assign(gfx, GFX_DEFAULT); applyGfx(); });
 $('gfx-close').addEventListener('click', () => toggleControls(false));
+// options dialog: audio, one volume slider per kind of sound
+$('aud-rows').innerHTML = CHANNELS.map(c => `<div class="aud-row"><span>${c.label}</span><input type="range" min="0" max="200" step="5" data-vol="${c.key}" aria-label="${c.label} volume"><output data-out="${c.key}"></output><button type="button" data-test="${c.key}">Test</button></div><p class="aud-hint">${c.hint}</p>`).join('');
+function showVolumes() { for (const c of CHANNELS) { const v = Math.round(getVolume(c.key) * 100); document.querySelector(`[data-vol="${c.key}"]`).value = v; document.querySelector(`[data-out="${c.key}"]`).textContent = v + '%'; } $('aud-mute').checked = isMuted(); }
+$('aud-rows').addEventListener('input', e => { const k = e.target.dataset.vol; if (k) { setVolume(k, e.target.value / 100); showVolumes(); } });
+$('aud-rows').addEventListener('click', e => { const k = e.target.dataset.test; if (k) { startSound(); previewSound(k); } });
+$('aud-mute').addEventListener('change', e => setMuted(e.target.checked));
+$('aud-reset').addEventListener('click', () => { resetVolumes(); setMuted(false); showVolumes(); });
+$('aud-close').addEventListener('click', () => toggleControls(false));
+showVolumes();
 applyGfx(false);
 $('form').addEventListener('submit', e => { e.preventDefault(); start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
