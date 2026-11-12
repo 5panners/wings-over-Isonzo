@@ -20,8 +20,8 @@ export function ridged(x, y, o = 4) { let a = 0.6, s = 0, f = 1, w = 1; for (let
 export const hash2 = (i, j) => { let h = (i * 374761393 + j * 668265263) ^ 0x5bd1e995; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
 // ---- geography ----
-export const HALF = 600;                 // combat area reaches ±600 north-south
-export const HALF_X = 1080;              // and ±1080 east-west, out to the coasts
+export const HALF = 750;                 // combat area reaches ±750 north-south
+export const HALF_X = 1350;              // and ±1350 east-west, out past the coasts
 export const riverX = z => -20 + 70 * Math.sin(z / 160 + 0.5) + 35 * Math.sin(z / 70 + 2);
 export const riverLevel = z => Math.max(0, (520 - z) / 1420 * 62);
 export const riverHalf = z => lerp(5, 13, sst(-500, 400, z));

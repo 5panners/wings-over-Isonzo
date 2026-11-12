@@ -57,7 +57,7 @@ The sun rises in the east at 06:00 and sets in the west at 18:00; the moon is up
 
 ### Controllers
 
-Gamepads, joysticks, throttles and rudder pedals work alongside the keyboard. Open **Controller setup** from the lobby, or press `Esc` in flight.
+Gamepads, joysticks, throttles and rudder pedals work alongside the keyboard. Open **Options** from the lobby, or press `Esc` in flight; controller settings are on the Controls tab.
 
 - **Assign:** press Assign next to an action, then move that control (or press that button). Each binding remembers its device, so a stick, a throttle and pedals can be mixed.
 - **Standard layout:** an Xbox / PlayStation style pad is set up automatically — left stick pitch and roll, right stick rudder and throttle, right trigger fires.
@@ -78,9 +78,11 @@ The flight model and chase camera come from Home Skies 1917:
 - The aircraft turns by banking and holds the bank you set; there is no self-levelling.
 - The flight path follows the nose only as fast as the wings can pull, so hauling back hard bleeds speed.
 - Below stall speed the aircraft sinks and drops its nose; let it dive to recover.
-- The camera sits behind and above and always keeps the horizon level. How lazily it follows is the "Camera smoothing" slider in the lobby.
+- The camera sits behind and above and always keeps the horizon level. How lazily it follows is the "Camera smoothing" slider on the Controls tab of Options.
 
-Add `?shadows=0` to the URL on slow machines.
+### Graphics options
+
+Options has a Graphics tab: shadows on or off, shadow distance (how far from your aircraft shadows reach when you are high), and rendering scale (the resolution the 3D view is drawn at; lower is faster). Settings are saved in the browser. Adding `?shadows=0` to the URL also turns shadows off.
 
 ## Multiplayer
 

@@ -36,7 +36,15 @@
   details { margin-top: 12px; font-size: 13px; color: #3a362c; }
   #controls { display: none; position: fixed; inset: 0; place-items: center; background: rgba(12, 16, 20, .6); padding: 16px; overflow: auto; z-index: 5; }
   #controls > div { width: min(760px, 100%); background: #efe6cf; color: #1d1b16; border-radius: 6px; padding: 22px 26px; box-sizing: border-box; box-shadow: 0 12px 50px rgba(0, 0, 0, .5); }
-  #controls h2 { font: 700 26px Georgia, serif; margin: 0 0 4px; }
+  #controls h2 { font: 700 26px Georgia, serif; margin: 0 0 8px; }
+  #controls h3 { font: 700 12px Inter, system-ui, sans-serif; letter-spacing: .16em; text-transform: uppercase; margin: 16px 0 6px; padding-bottom: 4px; border-bottom: 1.5px solid #1d1b16; }
+  #controls .tabs { display: flex; gap: 6px; border-bottom: 2px solid #1d1b16; margin-bottom: 4px; }
+  #controls .tabs button { border-bottom: 0; border-radius: 4px 4px 0 0; padding: 8px 18px; font-size: 14px; }
+  #controls .tabs button.on { background: #1d1b16; color: #efe6cf; border-color: #1d1b16; }
+  #controls .keys { margin: 0; font-size: 13.5px; line-height: 1.7; } #controls .keys b { background: #fbf6e6; border: 1px solid #b9ab86; border-radius: 3px; padding: 0 5px; font-weight: 600; }
+  #controls .note { grid-column: 1 / -1; margin: -8px 0 6px; font-size: 12.5px; color: #5b5444; }
+  #controls label.check { display: flex; margin: 16px 0 14px; font-size: 14px; font-weight: 600; }
+  #tab-graphics .sliders { grid-template-columns: 1fr; gap: 12px; }
   #controls button { width: auto; margin: 0; padding: 6px 12px; font: 600 13px Inter, system-ui, sans-serif; background: #fbf6e6; color: #1d1b16; border: 1.5px solid #b9ab86; cursor: pointer; }
   #controls button:disabled { opacity: .45; cursor: default; }
   #controls button.primary { background: #1d1b16; color: #efe6cf; border-color: #1d1b16; padding: 8px 22px; }
@@ -69,14 +77,14 @@
 <body>
 <canvas id="c"></canvas>
 <canvas id="hud"></canvas>
-<div id="build" aria-label="Build number">Build 25</div>
+<div id="build" aria-label="Build number">Build 26</div>
 <div id="ui">
   <div id="score" class="panel"></div>
   <div id="stats" class="panel"></div>
   <div id="feed"></div>
   <div id="msg"></div>
   <div id="netinfo"></div>
-  <div id="help">W/S or ↑/↓ pitch · A/D or ←/→ roll · Q/E rudder · Shift / Ctrl throttle · Space or mouse to fire · M sound · [ ] time of day · , . camera smoothing · Esc controller setup</div>
+  <div id="help">W/S or ↑/↓ pitch · A/D or ←/→ roll · Q/E rudder · Shift / Ctrl throttle · Space or mouse to fire · M sound · [ ] time of day · Esc options</div>
 </div>
 <div id="lobby">
   <form id="form" autocomplete="off">
@@ -103,20 +111,40 @@
       <div><label for="clock">Clock</label>
         <select id="clock"><option value="0">Stopped</option><option value="1">Real time</option><option value="12" selected>One hour every 5 minutes</option><option value="60">One hour every minute</option><option value="240">One hour every 15 seconds</option></select></div>
     </div>
-    <label for="camease">Camera smoothing <small>— low follows tightly, high eases in and out (also , and . in flight)</small></label>
-    <input id="camease" type="range" min="0" max="100" step="5" style="padding:0;border:0;background:none">
     <details><summary>Connection options</summary>
       <label for="relay">WebSocket relay <small>— only if peer-to-peer fails; everyone must use the same one</small></label>
       <input id="relay" placeholder="wss://your-relay.example">
     </details>
     <button id="go">Take off</button>
-    <button type="button" id="open-controls">Controller setup</button>
+    <button type="button" id="open-controls">Options — controls and graphics</button>
     <div id="status" role="status"></div>
   </form>
 </div>
-<div id="controls" role="dialog" aria-label="Controller setup"><div>
-  <h2>Controller setup</h2>
-  <div id="controls-body"></div>
+<div id="controls" role="dialog" aria-label="Options"><div>
+  <h2>Options</h2>
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" data-tab="controls" class="on">Controls</button>
+    <button type="button" role="tab" data-tab="graphics">Graphics</button>
+  </div>
+  <div id="tab-controls" role="tabpanel">
+    <h3>Keyboard</h3>
+    <p class="keys">Pitch <b>W S</b> or <b>↑ ↓</b> · Roll <b>A D</b> or <b>← →</b> · Rudder <b>Q E</b> · Throttle <b>Shift</b> / <b>Ctrl</b> · Fire <b>Space</b> or mouse · Sound <b>M</b> · Time of day <b>[ ]</b> · Options <b>Esc</b></p>
+    <h3>Camera</h3>
+    <div class="sliders"><label>Camera smoothing <output id="camease-out"></output><input id="camease" type="range" min="0" max="100" step="5"></label>
+      <p class="note">Low follows the aircraft tightly; high eases in and out. Also <b>,</b> and <b>.</b> in flight.</p></div>
+    <h3>Controller</h3>
+    <div id="controls-body"></div>
+  </div>
+  <div id="tab-graphics" role="tabpanel" hidden>
+    <label class="check"><input id="gfx-shadows" type="checkbox"> Shadows</label>
+    <div class="sliders">
+      <label>Shadow distance <output id="gfx-shadowdist-out"></output><input id="gfx-shadowdist" type="range" min="60" max="600" step="20"></label>
+      <p class="note">How far from your aircraft shadows are drawn when you are high. Further reaches more of the landscape but makes shadows softer. Low down they are always tight and sharp.</p>
+      <label>Rendering scale <output id="gfx-scale-out"></output><input id="gfx-scale" type="range" min="30" max="200" step="5"></label>
+      <p class="note">The resolution the 3D view is drawn at, as a share of your screen's. Lower is faster and blurrier; above 100% is sharper and slower.</p>
+    </div>
+    <div class="foot"><button type="button" id="gfx-reset">Restore defaults</button><button type="button" id="gfx-close" class="primary">Done</button></div>
+  </div>
 </div></div>
 <script type="module" src="src/main.js"></script>
 </body>

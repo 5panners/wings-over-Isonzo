@@ -16,7 +16,11 @@ const other = t => (t === 'it' ? 'ah' : 'it');
 
 // ---------------- renderer & world ----------------
 const renderer = new THREE.WebGLRenderer({ canvas: $('c'), antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// ---- graphics options (Options > Graphics), remembered in the browser ----
+const GFX_DEFAULT = { shadows: true, shadowDist: 300, scale: Math.min(1, 2 / devicePixelRatio) };   // scale: share of the screen's own resolution
+const gfx = { ...GFX_DEFAULT };
+try { Object.assign(gfx, JSON.parse(localStorage.getItem('woi-gfx') || '{}')); } catch { /* no storage */ }
+renderer.setPixelRatio(Math.min(devicePixelRatio * gfx.scale, 4));
 renderer.shadowMap.enabled = new URLSearchParams(location.search).get('shadows') !== '0';   // ?shadows=0 for slow machines
  renderer.shadowMap.type = THREE.PCFShadowMap;
 const scene = new THREE.Scene();
@@ -300,7 +304,7 @@ const camLook = new THREE.Vector3();
 let cine = false;                      // true while the going-down shot is running
 let camEase = 0.45;                    // 0 = camera locked tight to the aircraft, 1 = very lazy
 try { const v = parseFloat(localStorage.getItem('woi-camease')); if (v >= 0 && v <= 1) camEase = v; } catch { /* no storage */ }
-function setCamEase(v) { camEase = THREE.MathUtils.clamp(v, 0, 1); try { localStorage.setItem('woi-camease', camEase); } catch { /* no storage */ } $('camease').value = Math.round(camEase * 100); }
+function setCamEase(v) { camEase = THREE.MathUtils.clamp(v, 0, 1); try { localStorage.setItem('woi-camease', camEase); } catch { /* no storage */ } $('camease').value = Math.round(camEase * 100); $('camease-out').textContent = Math.round(camEase * 100) + '%'; }
 function updateCamera(dt) {
   camera.up.set(0, 1, 0);
   if (!me) { const a = now() * 0.03; camera.position.set(Math.sin(a) * 900, 380, 300 + Math.cos(a) * 700); camera.lookAt(0, 40, -80); }
@@ -333,7 +337,7 @@ function updateCamera(dt) {
   // advance the clock; this also keeps the shadow map centred on the aircraft, and tight around it when low
   // so that its shadow on the ground is crisp
   const c = me ? me.pos : V.set(0, 0, 0);
-  sky.update(dt, c, camera, me ? THREE.MathUtils.clamp(55 + (me.pos.y - H(me.pos.x, me.pos.z)) * 2, 60, 300) : 300);
+  sky.update(dt, c, camera, me ? THREE.MathUtils.clamp(55 + (me.pos.y - H(me.pos.x, me.pos.z)) * 2, 60, Math.max(60, gfx.shadowDist)) : gfx.shadowDist);
 }
 
 // ---------------- HUD ----------------
@@ -376,19 +380,19 @@ function drawHud(t) {
     for (let i = 0, n = Math.floor(me.dmg.eng * 16); i < n; i++) { const o = OIL[i]; ctx.beginPath(); ctx.ellipse(o[0] * W, o[1] * Hh, o[2] * Hh, o[2] * Hh * o[3], o[4], 0, 6.3); ctx.fill(); }
   }
   // minimap
-  const RX = 132, RZ = 72, cx = W - RX - 18, cy = Hh - RZ - 18, K = RX / 1300, m = (x, z) => [cx + x * K, cy + z * K];   // 1300 units east-west, 700 north-south
+  const RX = 132, RZ = 76, cx = W - RX - 18, cy = Hh - RZ - 18, K = RX / 1500, m = (x, z) => [cx + x * K, cy + z * K];   // shows 1500 units east-west, 860 north-south of centre
   ctx.fillStyle = 'rgba(20,60,84,.8)'; ctx.fillRect(cx - RX, cy - RZ, RX * 2, RZ * 2);                               // sea
   ctx.save(); ctx.beginPath(); ctx.rect(cx - RX, cy - RZ, RX * 2, RZ * 2); ctx.clip();
   ctx.fillStyle = 'rgba(58,84,52,.9)'; ctx.beginPath();                                                              // land, traced round the three coasts
-  for (let z = -720; z <= 700; z += 40) { const q = m(coastW(z), Math.min(z, coastZ(coastW(z)))); z === -720 ? ctx.moveTo(...q) : ctx.lineTo(...q); }
-  for (let x = -1300; x <= 1300; x += 40) if (x > coastW(coastZ(x)) && x < coastE(coastZ(x))) ctx.lineTo(...m(x, coastZ(x)));
-  for (let z = 700; z >= -720; z -= 40) ctx.lineTo(...m(coastE(z), Math.min(z, coastZ(coastE(z)))));
+  for (let z = -880; z <= 860; z += 40) { const q = m(coastW(z), Math.min(z, coastZ(coastW(z)))); z === -880 ? ctx.moveTo(...q) : ctx.lineTo(...q); }
+  for (let x = -1500; x <= 1500; x += 40) if (x > coastW(coastZ(x)) && x < coastE(coastZ(x))) ctx.lineTo(...m(x, coastZ(x)));
+  for (let z = 860; z >= -880; z -= 40) ctx.lineTo(...m(coastE(z), Math.min(z, coastZ(coastE(z)))));
   ctx.closePath(); ctx.fill(); ctx.restore();
   ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1; ctx.strokeRect(cx - RX, cy - RZ, RX * 2, RZ * 2);
-  ctx.strokeStyle = '#35c9ae'; ctx.lineWidth = 2.5; ctx.beginPath(); for (let z = -690; z <= 560; z += 30) { const q = m(riverX(z), z); z === -690 ? ctx.moveTo(...q) : ctx.lineTo(...q); } ctx.stroke();
+  ctx.strokeStyle = '#35c9ae'; ctx.lineWidth = 2.5; ctx.beginPath(); for (let z = -860; z <= 560; z += 30) { const q = m(riverX(z), z); z === -860 ? ctx.moveTo(...q) : ctx.lineTo(...q); } ctx.stroke();
   for (const key of ['it', 'ah']) { const q = m(AIRFIELDS[key].x, AIRFIELDS[key].z); ctx.fillStyle = TEAM_COLOR[key]; ctx.fillRect(q[0] - 6, q[1] - 3, 12, 6); }
   ctx.fillStyle = 'rgba(255,255,255,.55)'; for (const s of SECTORS) { const q = m(s.x, s.z); ctx.beginPath(); ctx.arc(q[0], q[1], 2.5, 0, 6.3); ctx.fill(); }
-  for (const p of planes.values()) { if (!p.alive) continue; const q = m(THREE.MathUtils.clamp(p.pos.x, -1290, 1290), THREE.MathUtils.clamp(p.pos.z, -690, 690)); ctx.fillStyle = p === me ? '#fff' : TEAM_COLOR[p.team]; ctx.beginPath(); ctx.arc(q[0], q[1], p === me ? 4 : 3, 0, 6.3); ctx.fill(); if (p === me) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(...q); ctx.lineTo(q[0] + me.fwd.x * 11, q[1] + me.fwd.z * 11); ctx.stroke(); } }
+  for (const p of planes.values()) { if (!p.alive) continue; const q = m(THREE.MathUtils.clamp(p.pos.x, -1490, 1490), THREE.MathUtils.clamp(p.pos.z, -850, 850)); ctx.fillStyle = p === me ? '#fff' : TEAM_COLOR[p.team]; ctx.beginPath(); ctx.arc(q[0], q[1], p === me ? 4 : 3, 0, 6.3); ctx.fill(); if (p === me) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(...q); ctx.lineTo(q[0] + me.fwd.x * 11, q[1] + me.fwd.z * 11); ctx.stroke(); } }
   // text panels
   let it = 0, ah = 0; for (const p of planes.values()) p.team === 'it' ? it++ : ah++;
   $('score').innerHTML = `<span style="color:${TEAM_COLOR.it}">Italy ${score.it}</span><small>first to ${SCORE_LIMIT} · ${it} v ${ah}</small><span style="color:${TEAM_COLOR.ah}">${score.ah} Austria-Hungary</span>`;
@@ -439,11 +443,33 @@ async function start() {
   } catch (err) { net?.close(); net = null; for (const p of [...planes.values()]) removePlane(p); $('status').textContent = err.message || String(err); $('go').disabled = false; }
 }
 initControls();
-$('camease').value = Math.round(camEase * 100);
+setCamEase(camEase);
 $('camease').addEventListener('input', e => setCamEase(e.target.value / 100));
 $('open-controls').addEventListener('click', () => toggleControls(true));
+// options dialog: tabs
+for (const tab of document.querySelectorAll('#controls .tabs button')) tab.addEventListener('click', () => {
+  for (const t of document.querySelectorAll('#controls .tabs button')) t.classList.toggle('on', t === tab);
+  $('tab-controls').hidden = tab.dataset.tab !== 'controls'; $('tab-graphics').hidden = tab.dataset.tab !== 'graphics';
+});
+// options dialog: graphics
+const noShadowsUrl = params.get('shadows') === '0';
+function applyGfx(save = true) {
+  gfx.shadowDist = THREE.MathUtils.clamp(+gfx.shadowDist || 300, 60, 600); gfx.scale = THREE.MathUtils.clamp(+gfx.scale || 1, 0.3, 2);
+  sky.shadows = gfx.shadows && !noShadowsUrl;
+  renderer.setPixelRatio(Math.min(devicePixelRatio * gfx.scale, 4)); resize();
+  $('gfx-shadows').checked = sky.shadows; $('gfx-shadows').disabled = noShadowsUrl;
+  $('gfx-shadowdist').value = gfx.shadowDist; $('gfx-shadowdist-out').textContent = gfx.shadowDist + ' m'; $('gfx-shadowdist').disabled = !sky.shadows;
+  $('gfx-scale').value = Math.round(gfx.scale * 100); $('gfx-scale-out').textContent = `${Math.round(gfx.scale * 100)}%  (${Math.round(innerWidth * devicePixelRatio * gfx.scale)} × ${Math.round(innerHeight * devicePixelRatio * gfx.scale)})`;
+  if (save) try { localStorage.setItem('woi-gfx', JSON.stringify(gfx)); } catch { /* no storage */ }
+}
+$('gfx-shadows').addEventListener('change', e => { gfx.shadows = e.target.checked; applyGfx(); });
+$('gfx-shadowdist').addEventListener('input', e => { gfx.shadowDist = +e.target.value; applyGfx(); });
+$('gfx-scale').addEventListener('input', e => { gfx.scale = e.target.value / 100; applyGfx(); });
+$('gfx-reset').addEventListener('click', () => { Object.assign(gfx, GFX_DEFAULT); applyGfx(); });
+$('gfx-close').addEventListener('click', () => toggleControls(false));
+applyGfx(false);
 $('form').addEventListener('submit', e => { e.preventDefault(); start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
-window.__woi = { explode, flashes, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
+window.__woi = { gfx, renderer, explode, flashes, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
 frame();
 if (params.get('autostart')) start();

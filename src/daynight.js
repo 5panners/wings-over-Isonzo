@@ -41,6 +41,7 @@ export function createDayNight(scene, { sun: light, hemi }) {
   let lastE = 9, shadowExtent = 0;
 
   const api = {
+    shadows: true,     // graphics option
     tod: 6,            // hour of day, 0..24
     rate: 12,          // game hours per real hour (1 = real time, 0 = stopped)
     sunDir, moonDir,
@@ -53,7 +54,7 @@ export function createDayNight(scene, { sun: light, hemi }) {
       const bySun = e > 0, dir = bySun ? sunDir : moonDir;
       if (bySun) { light.color.copy(lowSun).lerp(highSun, sst(0, 0.4, e)); light.intensity = 2.6 * sst(0, 0.14, e); }
       else { light.color.copy(moonLight); light.intensity = 0.75 * sst(0.02, 0.2, moonDir.y) * n; }
-      light.castShadow = light.intensity > 0.02;
+      light.castShadow = api.shadows && light.intensity > 0.02;
       if (Math.abs(extent - shadowExtent) > shadowExtent * 0.04) {
         shadowExtent = extent; const s = light.shadow.camera; s.left = s.bottom = -extent; s.right = s.top = extent; s.updateProjectionMatrix();
         light.shadow.normalBias = Math.min(0.5, extent / 1024 * 2.5);        // a couple of shadow-map texels: enough to stop streaks, not enough to detach shadows
