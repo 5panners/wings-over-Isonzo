@@ -82,7 +82,7 @@ The flight model and chase camera come from Home Skies 1917:
 
 ### Audio options
 
-Options has an Audio tab with a volume slider for each kind of sound: master, your engine, other aircraft (their engines and the fly-by whizz), wind, guns, hits and explosions. Each runs from silent to double the designed level, has a Test button, and is saved in the browser. A Mute checkbox does the same as `M`.
+Options has an Audio tab with a volume slider for each kind of sound: master, your engine, other aircraft (their engines and the Doppler pitch drop as they pass), wind, guns, hits and explosions. Each runs from silent to double the designed level, has a Test button, and is saved in the browser. A Mute checkbox does the same as `M`.
 
 ### Graphics options
 

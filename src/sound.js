@@ -5,7 +5,7 @@ let ctx = null, master, eng, wind, noise, muted = false, loopBuf = null;
 export const CHANNELS = [
   { key: 'master', label: 'Master volume', hint: 'Everything at once' },
   { key: 'engine', label: 'Your engine', hint: 'The propeller note, rising and falling with the throttle' },
-  { key: 'flyby', label: 'Other aircraft', hint: 'Engines of nearby aircraft with the Doppler whizz, and the air rush of a close pass' },
+  { key: 'flyby', label: 'Other aircraft', hint: 'Engines of nearby aircraft, with the Doppler pitch drop as they pass' },
   { key: 'wind', label: 'Wind', hint: 'Air noise that builds with speed' },
   { key: 'guns', label: 'Guns', hint: 'Your guns and everyone else\'s' },
   { key: 'hits', label: 'Hits', hint: 'Rounds striking your aircraft, and your rounds striking home' },
@@ -106,17 +106,12 @@ export function updateSound(alive, throttle, speed, topSpeed) {
 //   pan     -1 (left) .. 1 (right)
 // The nearest few get a voice each. As one sweeps past, volume peaks and the pitch drops: the whizz.
 const VOICES = 4, voices = [];
-let rush = null, duck = 0;        // duck: 0..1, how close the nearest other aircraft is
+let duck = 0;        // duck: 0..1, how close the nearest other aircraft is
 export function updateOthers(list) {
   if (!ctx || !voices.length) return;
-  if (!rush) {                                                     // air rush layered on a close pass
-    const src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), g = ctx.createGain();
-    src.buffer = noise; src.loop = true; bp.type = 'bandpass'; bp.Q.value = 1.2; g.gain.value = 0; src.connect(bp); bp.connect(g); g.connect(bus.flyby); src.start();
-    rush = { bp, g, vol: 0 };
-  }
   list.sort((a, b) => a.dist - b.dist); list.length = Math.min(list.length, VOICES);
   for (const v of voices) if (v.id !== null && !list.some(o => o.id === v.id)) v.id = null;         // its aircraft is no longer among the nearest
-  let close = 0, closeRate = 1;
+  let close = 0;
   for (const o of list) {
     let v = voices.find(x => x.id === o.id) || voices.find(x => x.id === null && x.vol < 0.01) || voices.find(x => x.id === null);
     if (!v) continue;
@@ -124,11 +119,10 @@ export function updateOthers(list) {
     const vol = 1.7 / (1 + (o.dist / 95) * (o.dist / 95)) * Math.max(0, 1 - o.dist / 450);      // loud inside ~100 m, audible to ~400 m
     v.vol += (vol - v.vol) * 0.25; v.rate += (1.15 * o.doppler - v.rate) * 0.3;
     v.g.gain.value = v.vol; v.src.playbackRate.value = v.rate; if (v.pan) v.pan.pan.value = o.pan;
-    const c = Math.max(0, 1 - o.dist / 130); if (c > close) { close = c; closeRate = o.doppler; }
+    const c = Math.max(0, 1 - o.dist / 130); if (c > close) close = c;
   }
   for (const v of voices) if (v.id === null && v.vol > 0) { v.vol *= 0.8; if (v.vol < 0.002) v.vol = 0; v.g.gain.value = v.vol; }
   duck += (close - duck) * 0.3;
-  rush.vol += (close * close * 1.1 - rush.vol) * 0.3; rush.g.gain.value = rush.vol; rush.bp.frequency.value = 900 * closeRate;
 }
 export const otherVoices = () => voices.map(v => ({ id: v.id, vol: +v.vol.toFixed(3), rate: +v.rate.toFixed(2) }));   // for tests
 
