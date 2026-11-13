@@ -85,6 +85,10 @@ Settings are saved in the browser.
 
 Aircraft in view carry a marker with name and distance: a diamond for enemies, a ring for friends. Aircraft out of view are shown by arrows on a ring round the centre of the screen, pointing the way to turn; enemy arrows are red, larger when closer, and show the distance.
 
+### Flags and wind
+
+Each side flies its own flag, built from flat-coloured cells (no textures): Italy's tricolore with the crowned Savoy shield, and the Austro-Hungarian imperial war ensign, red-white-red with the Austrian and Hungarian arms under a crown (simplified to fit the grid). They are on the airfield flagpoles, and the capture point flies the flag of whoever holds it, or plain white if nobody does. The flags wave in a wind that drifts slowly and gusts, and the airfield windsocks stream downwind and droop when it is light. The wind is cosmetic and does not affect flight.
+
 ### Landing and repairs
 
 You can land: come in slowly with the wings level, the nose up a little and the throttle closed, and settle onto the wheels. A touchdown that is too hard, too fast, nose-down, on one wingtip or on a steep slope is a crash, and the message says which. Close to the ground (under about 6 m up) the wings ride a cushion of air that lowers the stall speed by up to 15%, which helps you settle onto the runway. A firm but survivable arrival is a "Hard landing" that strains the tail. You can land anywhere flat enough, but only your own airfield has ground crews:
@@ -140,6 +144,7 @@ URL parameters: `name`, `pw`, `team` (`it` / `ah`), `size` (1–6), `time` (star
 | `src/world.js` | Map definition: terrain height function, coastlines, airfields, balloon sectors, ground targets |
 | `src/terrain.js` | Terrain, trees, sky, and the water shader for the river and sea |
 | `src/objects.js` | Aircraft, balloons, airfields, towns, ground-target models |
+| `src/flags.js` | The national flags, the wind, and the windsocks' motion |
 | `src/front.js` | Zeppelin Front mode: airships, the Gradisca capture point, tickets, bot objectives |
 | `src/plane.js` | Aircraft types, flight model, bot pilot |
 | `src/gamepad.js` | Controller bindings, calibration and the setup panel |

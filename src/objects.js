@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { makeFlagMesh, registerArm } from './flags.js';
 import { lerp, rnd, H, riverX, riverLevel, riverHalf, sst, AIRFIELDS, TOWNS, SECTORS, TARGETS } from './world.js';
 
 export const TEAM = { it: '#2f7fe0', ah: '#d8362c', n: '#f2ead0', obj: '#ffb21e' };
@@ -126,13 +127,17 @@ function hangar(side, w = 11, d = 13) {
 }
 function tent(c = '#e4dcc0', r = 1.8) { return mk(new THREE.ConeGeometry(r, r * 1.3, 6), c, 0, r * 0.65, 0); }
 function truck(c) { const g = G(mk(B(1.9, 1.5, 3.2), '#a79c78', 0, 1.7, -0.9), mk(B(1.9, 0.5, 5), c, 0, 0.9, 0), mk(B(1.8, 1.3, 1.3), c, 0, 1.6, 1.6)); for (const [x, z] of [[-1, 1.6], [1, 1.6], [-1, -1.5], [1, -1.5]]) g.add(mk(Cy(0.5, 0.5, 0.3, 8), '#222', x, 0.5, z).rotateZ(Math.PI / 2)); return g; }
-function flag(side) {
-  const g = G(mk(Cy(0.09, 0.12, 11, 5), '#e9e4d6', 0, 5.5, 0));
-  const cs = side === 'it' ? ['#2f8a45', '#f4f1e6', '#c9302a'] : ['#c9302a', '#f4f1e6', '#c9302a'];
-  cs.forEach((c, i) => side === 'it' ? g.add(mk(B(1.2, 2.3, 0.06), c, 0.7 + i * 1.2, 9.6, 0)) : g.add(mk(B(3.6, 0.77, 0.06), c, 1.9, 10.4 - i * 0.77, 0)));
+function flag(side) {                                      // a pole with its nation's waving flag (see flags.js)
+  const g = G(mk(Cy(0.09, 0.13, 15, 5), '#e9e4d6', 0, 7.5, 0), mk(new THREE.SphereGeometry(0.3, 6, 4), '#d9b13b', 0, 15.1, 0));
+  const arm = new THREE.Group(); arm.position.set(0.1, 14.9, 0); arm.add(makeFlagMesh(side)); g.add(arm); registerArm(arm, 'flag');
   return g;
 }
-function windsock() { return G(mk(Cy(0.07, 0.07, 7, 5), '#e9e4d6', 0, 3.5, 0), mk(new THREE.ConeGeometry(0.55, 2.8, 6), '#e8632a', 1.5, 6.8, 0).rotateZ(Math.PI / 2 + 0.2)); }
+function windsock() {                                         // the sock streams downwind, drooping when the wind is light
+  const g = G(mk(Cy(0.07, 0.07, 7, 5), '#e9e4d6', 0, 3.5, 0)), arm = new THREE.Group(); arm.position.set(0, 6.8, 0);
+  const cone = mk(new THREE.ConeGeometry(0.55, 2.8, 6), '#e8632a', 1.4, 0, 0); cone.rotation.z = -Math.PI / 2;        // wide mouth upwind, tip downwind
+  arm.add(cone, mk(new THREE.TorusGeometry(0.5, 0.06, 4, 8), '#f4f1e6', 0.15, 0, 0).rotateY(Math.PI / 2)); g.add(arm); registerArm(arm, 'sock');
+  return g;
+}
 function sandbags(r) { const m = mk(new THREE.TorusGeometry(r, 0.55, 4, 9), '#c2b189'); m.rotation.x = Math.PI / 2; m.position.y = 0.35; return m; }
 function gun(side, mortar) {
   const c = side === 'ah' ? '#59645a' : '#6f7a5c', g = G(sandbags(mortar ? 3.6 : 3.2), mk(B(2.2, 0.8, 3), c, 0, 0.6, 0));

@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { H, TOWNS } from './world.js';
 import { GUN } from './plane.js';
+import { makeFlagMesh, registerArm } from './flags.js';
 
 export const TICKETS = 150, AIRSHIP_TICKETS = 50, BLEED_EVERY = 4;
 export const SHIP_LEN = 160, SHIP_R = 11, CELLS = 6, CELL_HP = 320;
@@ -69,9 +70,10 @@ function buildPoint(scene) {
   const wall = new THREE.Mesh(new THREE.CylinderGeometry(POINT.r, POINT.r, POINT.ceiling, 48, 1, true), wallMat); wall.position.set(POINT.x, POINT.y + POINT.ceiling / 2, POINT.z); g.add(wall);
   const fx = POINT.x + 20, fz = POINT.z - 16, fy = H(fx, fz);
   g.add(part(new THREE.CylinderGeometry(0.25, 0.32, 18, 6), lambert('#e9e4d6'), fx, fy + 9, fz));
-  const flagMat = lambert(TEAM_TINT.none); g.add(part(new THREE.BoxGeometry(6.5, 3.8, 0.15), flagMat, fx + 3.4, fy + 16, fz));
+  const arm = new THREE.Group(); arm.position.set(fx + 0.1, fy + 17.6, fz); arm.scale.setScalar(1.35); g.add(arm); registerArm(arm, 'flag');
+  const flags = {}; for (const side of ['it', 'ah', 'none']) { flags[side] = makeFlagMesh(side); flags[side].visible = side === 'none'; arm.add(flags[side]); }   // the flag of whoever holds the town
   scene.add(g);
-  return { group: g, ringMat, wallMat, flagMat };
+  return { group: g, ringMat, wallMat, flags };
 }
 
 // ---------------- the mode ----------------
@@ -246,7 +248,8 @@ export function createFront(scene, fx) {
     // ground point visuals and (host) capture
     if (host && !frozen) pointStep(dt, planes);
     const tint = TEAM_TINT[point.owner || 'none'];
-    point.ringMat.color.set(tint); point.wallMat.color.set(tint); point.flagMat.color.set(tint);
+    point.ringMat.color.set(tint); point.wallMat.color.set(tint);
+    for (const k of ['it', 'ah', 'none']) point.flags[k].visible = k === (point.owner || 'none');
     point.wallMat.opacity = 0.07 + (point.contested || (Math.abs(point.v) < 0.999 && Math.abs(point.v) > 0.001) ? 0.05 * (1 + Math.sin(now * 6)) : 0);
     observe(now, myTeam);
   }
