@@ -61,6 +61,8 @@ export class Plane {
     this.muzzles = [new THREE.Vector3(-0.2, 0.64, 2.95), new THREE.Vector3(0.2, 0.64, 2.95)];
     this.flash = this.muzzles.map(m => { const f = makeFlash(0.55); f.position.copy(m); this.mesh.add(f); return f; });
     this.flashT = -9; this.flashSide = 0;
+    // control surfaces: ctl = stick positions (-1..1) for the player's own aircraft, otherwise worked out from how the aircraft is turning
+    this.ctl = { pitch: 0, roll: 0, yaw: 0 }; this.shown = { pitch: 0, roll: 0, yaw: 0 }; this.live = false; this.surf = this.mesh.userData.ctl || null; this.prevQuat = new THREE.Quaternion();
   }
   get local() { return this.net === null; }
   // damage state: each zone runs 0 (sound) to 1 (destroyed)
@@ -88,7 +90,22 @@ export class Plane {
     this.lastHitBy = null; this.bank = 0; this.gunAt = now + 1.5; this.spawnedAt = now; this.resetDamage(); this.crashWhy = null; this.event = null; this.repairing = -9;
     this.fwd.copy(Z).applyQuaternion(this.quat); this.vdir.copy(this.fwd); this.sink = 0;
   }
-  sync() { this.mesh.position.copy(this.pos); this.mesh.quaternion.copy(this.quat); this.mesh.visible = this.alive; }
+  sync(dt = 1 / 60) { this.mesh.position.copy(this.pos); this.mesh.quaternion.copy(this.quat); this.mesh.visible = this.alive; if (this.surf && this.alive) this.moveSurfaces(dt); this.prevQuat.copy(this.quat); }
+  // Deflect the ailerons, elevator and rudder. They follow the stick when it is ours; for every other aircraft they follow the turning
+  // it is doing (angular velocity in its own frame, from how its orientation changed this frame), which gives the same picture.
+  moveSurfaces(dt) {
+    const t = TYPES[this.type], c = this.ctl, s = this.shown, f = this.surf;
+    if (!this.live && dt > 1e-4) {
+      const rel = q2.copy(this.prevQuat).invert().multiply(this.quat), k = (rel.w < 0 ? -2 : 2) / dt;
+      c.roll = THREE.MathUtils.clamp(rel.z * k / (t.roll * 0.8), -1, 1); c.pitch = THREE.MathUtils.clamp(-rel.x * k / (t.pitch * 0.8), -1, 1); c.yaw = THREE.MathUtils.clamp(-rel.y * k / 1.1, -1, 1);
+    }
+    const a = Math.min(1, 12 * dt);
+    s.pitch += (c.pitch - s.pitch) * a; s.roll += (c.roll - s.roll) * a; s.yaw += (c.yaw - s.yaw) * a;
+    const D = this.dmg, M = 0.55;
+    f.ailL.rotation.x = -s.roll * M; f.ailR.rotation.x = s.roll * M;                       // roll right: left aileron down, right aileron up
+    f.elev.rotation.x = s.pitch * M; f.rud.rotation.y = -s.yaw * M;                        // pull back: elevator up; right rudder: trailing edge to the left
+    f.ailL.visible = D.wingL < 0.7; f.ailR.visible = D.wingR < 0.7; f.elev.visible = f.rud.visible = D.tail < 0.85;   // shot away
+  }
 }
 
 // ---------- damage model (after Home Skies 1917, with hits located on the airframe) ----------
@@ -239,6 +256,7 @@ const groundEffect = p => { const a = p.pos.y - H(p.pos.x, p.pos.z); return a < 
 export function flyPlayer(p, input, dt) {
   const t = TYPES[p.type], fo = flight, top = t.top * fo.top, q = p.quat, D = p.dmg, wing = wingDamage(p), stall = t.stall * fo.stall * (1 + 0.35 * wing) * groundEffect(p);
   p.liftTimer = Math.max(0, (p.liftTimer || 0) - dt);
+  p.live = !p.dying; p.ctl.pitch = input.pitch; p.ctl.roll = input.roll; p.ctl.yaw = input.yaw;           // the control surfaces follow the stick
   if (p.onGround) return groundRoll(p, input.pitch, input.roll * 0.5 + input.yaw, input, dt);
   if (p.dying) return fallDying(p, dt);
   p.throttle = input.throttleAbs != null ? input.throttleAbs : THREE.MathUtils.clamp(p.throttle + input.throttle * 0.7 * dt, 0, 1);

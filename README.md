@@ -91,6 +91,10 @@ Aircraft in view carry a marker with name and distance: a diamond for enemies, a
 
 Each side flies its own flag, built from flat-coloured cells (no textures): Italy's tricolore with the crowned Savoy shield, and the Austro-Hungarian imperial war ensign, red-white-red with the Austrian and Hungarian arms under a crown (simplified to fit the grid). They are on the airfield flagpoles, and the capture point flies the flag of whoever holds it, or plain white if nobody does. The flags wave in a wind that drifts slowly and gusts, and the airfield windsocks stream downwind and droop when it is light. The wind is cosmetic and does not affect flight.
 
+### Control surfaces
+
+The aircraft have working control surfaces: ailerons on the upper wing, an elevator behind the tailplane and a hinged rudder. Yours follow your stick, so roll right drops the left aileron and raises the right, pulling back raises the elevator, and right rudder swings the rudder to the left. Other aircraft, bots included, move theirs according to how they are turning, so you can read what a pilot is doing. A wing or tail that is badly damaged loses its surfaces.
+
 ### Weather
 
 Pick the weather on the Game tab (and change it in flight, as host): **Fair**, **Overcast**, **Rain**, **Thunderstorm**, or **Changeable**, which drifts between them every minute or two. The weather fades in over about 15 seconds.

@@ -34,7 +34,20 @@ export function biplane(o) {
   const sp = o.span || 6.4;
   g.add(mk(B(sp, 0.12, 1.35), o.wing, 0, 1.05, 1.15), mk(B(sp * (o.sesqui ? 0.82 : 0.94), 0.11, o.sesqui ? 0.8 : 1.2), o.wing2 || o.wing, 0, -0.42, 0.95));
   for (const sx of [-1, 1]) { g.add(rod([sx * sp * 0.33, -0.4, 1.35], [sx * sp * 0.33, 1.02, 1.6], 0.045, '#5a3d22'), rod([sx * sp * 0.33, -0.4, 0.55], [sx * sp * 0.33, 1.02, 0.7], 0.045, '#5a3d22'), rod([sx * 0.4, 0.4, 1.5], [sx * 0.55, 1.02, 1.5], 0.045, '#5a3d22')); }
-  g.add(mk(B(2.3, 0.08, 0.85), o.wing, 0, 0.1, -2.05)); g.add(at(rudder(side, 1.05, 0.8), 0, 0.55, -2.25));
+  g.add(mk(B(2.3, 0.08, 0.85), o.wing, 0, 0.1, -2.05));
+  if (o.flying) {
+    // Control surfaces that move: ailerons on the upper wing, an elevator behind the tailplane and a hinged rudder. Each sits in a
+    // pivot at its hinge line, which plane.js turns (+ rotation.x = trailing edge up; + rotation.y turns the rudder toward +x, the left).
+    const shade = c => '#' + new THREE.Color(c).multiplyScalar(0.82).getHexString(), ctl = {};
+    for (const sx of [-1, 1]) {
+      const piv = new THREE.Group(); piv.position.set(sx * sp * 0.31, 1.05, 0.475); piv.add(mk(B(sp * 0.27, 0.07, 0.44), shade(o.wing), 0, 0, -0.22), mk(B(sp * 0.27, 0.025, 0.06), '#3d3529', 0, 0.045, -0.4));
+      g.add(piv); ctl[sx > 0 ? 'ailL' : 'ailR'] = piv;
+    }
+    const el = new THREE.Group(); el.position.set(0, 0.1, -2.475); el.add(mk(B(2.2, 0.07, 0.5), shade(o.wing), 0, 0, -0.25)); g.add(el); ctl.elev = el;
+    g.add(mk(B(0.1, 1.0, 0.55), o.fus, 0, 0.55, -1.62));                                   // the fixed fin in front of the rudder
+    const ru = new THREE.Group(); ru.position.set(0, 0.55, -1.88); const rd = rudder(side, 1.05, 0.8); rd.position.z = -0.4; ru.add(rd); g.add(ru); ctl.rud = ru;
+    g.userData.ctl = ctl;
+  } else g.add(at(rudder(side, 1.05, 0.8), 0, 0.55, -2.25));
   for (const sx of [-1, 1]) { const w = mk(Cy(0.36, 0.36, 0.14, 8), '#2b2b2b', sx * 0.75, -1.15, 1.6); w.rotation.z = Math.PI / 2; g.add(w, rod([sx * 0.35, -0.4, 1.9], [sx * 0.7, -1.15, 1.6], 0.05, '#5a3d22'), rod([sx * 0.35, -0.4, 1.2], [sx * 0.7, -1.15, 1.6], 0.05, '#5a3d22')); }
   g.add(rod([-0.75, -1.15, 1.6], [0.75, -1.15, 1.6], 0.05, '#333'), rod([0, -0.2, -2.0], [0, -0.55, -2.3], 0.05, '#5a3d22'));
   for (const sx of [-1, 1]) g.add(at(roundel(side, 0.5), sx * sp * 0.38, 1.12, 1.15));

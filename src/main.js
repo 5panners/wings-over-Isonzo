@@ -314,7 +314,7 @@ function step(t, dt) {
       if (p.fire && Math.random() < dt * 22) puff(p.pos, Math.random() < 0.6 ? '#ff8a2a' : '#2b2927', 1.1 * k, 0.7 * k, 2.5, 0.9);
       if (p.local && p.dmg.fuel > 0.3 && p.fuel > 0 && Math.random() < dt * 9) puff(p.pos, '#e9eef2', 0.6, 1.0, 0.5, 0.4);
     }
-    p.sync();
+    p.sync(dt);
     for (let k = 0; k < 2; k++) p.flash[k].visible = p.alive && p.flashSide === k && t - p.flashT < 0.05;       // each flash shows for a moment after its shot
   }
   if (mode === 'front') front.update(dt, t, { host: isHost(), planes, myTeam: me?.team, level: botSettings.level, frozen: !!roundEndAt });
