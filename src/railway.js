@@ -68,12 +68,14 @@ export function createRailway(scene, fx = {}) {
       stone.add(new THREE.TorusGeometry(rr, 0.45, 4, 10, Math.PI), '#bdb298', o1.x, top - 0.5 - rr, o1.z, 0, rot, 0, 1, 1, 3.4);                                  // the arch
     }
   }
-  const portal = (end) => {                                                // a stone mouth in a rocky mound, where the line goes under the hill
+  const portal = (end) => {                                                // a stone tunnel mouth driven into the hillside where the line ends
     const p = end ? P[N - 1] : P[0], dir = end ? 1 : -1, tx = p.tx * dir, tz = p.tz * dir, rot = Math.atan2(tx, tz), by = p.y;
-    const px = p.x + tx * 3, pz = p.z + tz * 3, g = new Parts();
-    g.add(new THREE.BoxGeometry(9, 7.5, 5), '#9c917a', 0, 3.4, 0).add(new THREE.BoxGeometry(5, 5, 0.6), '#0b0b0d', 0, 2.5, -2.45).add(new THREE.BoxGeometry(6, 0.7, 5.3), '#b9ae95', 0, 5.2, 0)
-      .add(new THREE.IcosahedronGeometry(11, 0), '#7c8068', 0, 3.5, 7, 0, 0.5, 0, 1.15, 0.8, 1.2).add(new THREE.IcosahedronGeometry(8, 0), '#6f7b5c', 4, 3, 12, 0, 1, 0, 1, 0.85, 1);
-    const m = g.mesh(TRAIN_MAT, true); m.position.set(px, by - 0.2, pz); m.rotation.y = rot; root.add(m);
+    const g = new Parts(), stoneC = '#9c917a', dark = '#a89d84';
+    g.add(new THREE.BoxGeometry(11, 10, 9), stoneC, 0, 4.2, 0).add(new THREE.BoxGeometry(5.4, 5.6, 0.3), '#08080a', 0, 2.8 - 0.1, -4.55)           // the face, and the black mouth
+      .add(new THREE.BoxGeometry(7.4, 0.9, 0.7), '#b9ae95', 0, 6.2, -4.7).add(new THREE.BoxGeometry(0.9, 6.4, 0.7), '#b9ae95', -3.2, 3.0, -4.7).add(new THREE.BoxGeometry(0.9, 6.4, 0.7), '#b9ae95', 3.2, 3.0, -4.7)   // the stone surround
+      .add(new THREE.BoxGeometry(12, 0.6, 1.2), '#b9ae95', 0, 9.4, -4.4)                                                                                            // the cornice
+      .add(new THREE.BoxGeometry(0.9, 7.5, 8), dark, -6.6, 3.4, -1.2, 0, 0.35).add(new THREE.BoxGeometry(0.9, 7.5, 8), dark, 6.6, 3.4, -1.2, 0, -0.35);          // wing walls holding back the cutting
+    const m = g.mesh(TRAIN_MAT, true); m.position.set(p.x + tx * 2.6, by - 0.2, p.z + tz * 2.6); m.rotation.y = rot; root.add(m);
   };
   portal(false); portal(true);
   { const pole = new Parts(), o = {}; for (let s = 24; s < total - 20; s += 46) { const k = P[idxAt(s)]; if (k.kind !== 'earth') continue;

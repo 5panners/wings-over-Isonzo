@@ -142,7 +142,7 @@ function planBranch(sign, goals) {                                // goals: wayp
       if (!best || cost < best.cost) best = { cost, a, qx, qz, g };
     }
     if (Math.abs(best.qx) > 1250 || best.qz > 640 || best.qz < -780) { end = 'limit'; break; }
-    if (best.g > y + 7) { end = 'tunnel'; pts.push({ x: best.qx, z: best.qz, y }); break; }          // the hill is in the way: go into it
+    if (best.g > y + 11) { end = 'tunnel'; pts.push({ x: best.qx, z: best.qz, y }); break; }          // the hill is in the way: go into it
     y = Math.min(y + GRADE, Math.max(y - GRADE, best.g)); x = best.qx; z = best.qz; th = best.a; pts.push({ x, z, y });
     if (Math.hypot(goal.x - x, goal.z - z) < 30) { if (gi === goals.length - 1) { end = 'terminus'; break; } gi++; }
   }
@@ -166,7 +166,7 @@ export const rail = () => (_rail ??= buildRail());
 function buildRail() {
   const b1 = TARGETS.find(t => t.id === 'B1');
   // east: across the valley floor, then north along the hillside; west: along the foot of Sabotino and over the plain to Cormons
-  const e = planBranch(+1, [{ x: 118, z: 120 }, { x: 140, z: 100 }, { x: 146, z: 72 }, { x: 142, z: 48 }, { x: 135, z: 30 }, { x: 127, z: 0 }, { x: 120, z: -40 }, { x: 100, z: -80 }, { x: 64, z: -120 }, { x: 22, z: -158 }, { x: b1.x + 14, z: b1.z + 8 }]), w = planBranch(-1, [{ x: -62, z: 124 }, { x: -120, z: 116 }, { x: -200, z: 102 }, { x: -300, z: 96 }, { x: -400, z: 98 }]);
+  const e = planBranch(+1, [{ x: 118, z: 120 }, { x: 140, z: 100 }, { x: 146, z: 72 }, { x: 142, z: 48 }, { x: 135, z: 30 }, { x: 127, z: 0 }, { x: 120, z: -40 }, { x: 100, z: -80 }, { x: 64, z: -120 }, { x: 22, z: -158 }, { x: -14, z: -232 }]), w = planBranch(-1, [{ x: -62, z: 124 }, { x: -120, z: 116 }, { x: -200, z: 102 }, { x: -300, z: 92 }, { x: -345, z: 50 }, { x: -352, z: -20 }, { x: -352, z: -100 }, { x: -350, z: -170 }, { x: -350, z: -215 }]);
   const east = resample(smoothPath(e.pts, 3), 2.5), west = resample(smoothPath(w.pts, 3), 2.5).reverse();
   const bridgeLen = BRIDGE.half * 2, nb = Math.round(bridgeLen / 2.5), onBridge = [];
   for (let i = 1; i < nb; i++) { const t = i / nb * 2 - 1; onBridge.push({ x: BRIDGE.x + BRIDGE.dx * BRIDGE.half * t, z: BRIDGE.z + BRIDGE.dz * BRIDGE.half * t, y: BRIDGE.y, bridge: true }); }
