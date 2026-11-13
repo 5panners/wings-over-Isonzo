@@ -85,6 +85,15 @@ Settings are saved in the browser.
 
 Aircraft in view carry a marker with name and distance: a diamond for enemies, a ring for friends. Aircraft out of view are shown by arrows on a ring round the centre of the screen, pointing the way to turn; enemy arrows are red, larger when closer, and show the distance.
 
+### Landing and repairs
+
+You can land: come in slowly with the wings level, the nose up a little and the throttle closed, and settle onto the wheels. A touchdown that is too hard, too fast, nose-down, on one wingtip or on a steep slope is a crash, and the message says which. Close to the ground (under about 6 m up) the wings ride a cushion of air that lowers the stall speed by up to 15%, which helps you settle onto the runway. A firm but survivable arrival is a "Hard landing" that strains the tail. You can land anywhere flat enough, but only your own airfield has ground crews:
+
+- **Landed and rolled almost to a stop:** fast repairs and refuelling, and any fire is put out.
+- **Still rolling, or a low pass under 20 m over the strip:** slower repairs, enough to patch up an aircraft on a pass or two.
+
+Open the throttle again to take off; at speed under full power you lift off by yourself, so a touch-and-go works too.
+
 ### Handling
 
 The flight model and chase camera come from Home Skies 1917:

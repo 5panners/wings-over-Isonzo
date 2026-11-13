@@ -33,7 +33,13 @@ export const BALLOONS = SECTORS.map(s => { const gy = H(s.x, s.z); return { x: s
 // Set by a game mode: objective(p) -> what a bot should do, avoid(p) -> escape direction from a large obstacle,
 // collide(pos) -> true if that point is inside one (the aircraft crashes).
 export const hooks = { objective: null, avoid: null, collide: null };
-export const COLLIDE_RADIUS = 4.2;     // two aircraft closer than this have hit each other
+export const COLLIDE_RADIUS = 4.2;
+// Is (x, z) over this side's own airfield: the grass strip and the apron in front of the hangars?
+export function overOwnField(team, x, z) {
+  const f = AIRFIELDS[team], c = Math.cos(-f.rot), s = Math.sin(-f.rot), dx = x - f.x, dz = z - f.z;
+  const along = dx * c - dz * s, across = dx * s + dz * c;          // the airfield's own frame (see spawn on the runway)
+  return Math.abs(along) < 130 && across > -24 && across < 48;
+}     // two aircraft closer than this have hit each other
 
 export const GUN = { speed: 230, life: 1.5, interval: 0.09, damage: 3, hitRadius: 3.2 };
 const CEILING = 480, G = 9.81, KD = 0.0055;   // drag coefficient; thrust is sized so level top speed = TYPES[..].top
@@ -74,7 +80,7 @@ export class Plane {
       this.speed = 42; this.throttle = 0.85;
     }
     this.onGround = onRunway; this.hp = TYPES[this.type].hp; this.alive = true; this.firing = false;
-    this.lastHitBy = null; this.bank = 0; this.gunAt = now + 1.5; this.spawnedAt = now; this.resetDamage();
+    this.lastHitBy = null; this.bank = 0; this.gunAt = now + 1.5; this.spawnedAt = now; this.resetDamage(); this.crashWhy = null; this.event = null; this.repairing = -9;
     this.fwd.copy(Z).applyQuaternion(this.quat); this.vdir.copy(this.fwd); this.sink = 0;
   }
   sync() { this.mesh.position.copy(this.pos); this.mesh.quaternion.copy(this.quat); this.mesh.visible = this.alive; }
@@ -209,16 +215,21 @@ function groundRoll(p, pitch, steer, input, dt) {
   p.quat.setFromAxisAngle(Y, p.heading).multiply(q1.setFromAxisAngle(X, -p.tail));
   p.fwd.copy(Z).applyQuaternion(p.quat); p.vdir.set(Math.sin(p.heading), 0, Math.cos(p.heading)); p.sink = 0;
   if (input) p.firing = !!input.fire;
-  if ((p.speed >= takeoff && pitch > 0.1 && td < 0.5) || p.speed > takeoff * 1.4) p.onGround = false;      // unstick
+  // unstick: at flying speed with the stick back, or fast under power (with the throttle closed after landing it stays down)
+  if ((p.speed >= takeoff && pitch > 0.1 && td < 0.5) || (p.speed > takeoff * 1.4 && p.power > 0.5)) p.onGround = false;
   if (p.pos.y < 1.2) return 'ground';                                                                    // rolled into the sea
   return Math.abs(p.pos.x) > HALF_X + 220 || Math.abs(p.pos.z) > HALF + 220 ? 'bounds' : null;
 }
+
+// Ground effect: close to the ground the wings ride a cushion of air, so the stall speed drops by up to 15%
+// (the nearer, the more). It is what lets a slowing aircraft settle onto the runway instead of dropping out of the sky.
+const groundEffect = p => { const a = p.pos.y - H(p.pos.x, p.pos.z); return a < 6 ? 0.85 + 0.15 * Math.max(0, a) / 6 : 1; };
 
 // ---------- human pilot ----------
 // Flight model ported from Home Skies 1917 (in-flight part, standard handling).
 // input = { pitch, roll, yaw (-1..1), throttle (-1..1 change), throttleAbs (0..1 or null), fire }
 export function flyPlayer(p, input, dt) {
-  const t = TYPES[p.type], fo = flight, top = t.top * fo.top, q = p.quat, D = p.dmg, wing = wingDamage(p), stall = t.stall * fo.stall * (1 + 0.35 * wing);
+  const t = TYPES[p.type], fo = flight, top = t.top * fo.top, q = p.quat, D = p.dmg, wing = wingDamage(p), stall = t.stall * fo.stall * (1 + 0.35 * wing) * groundEffect(p);
   if (p.onGround) return groundRoll(p, input.pitch, input.roll * 0.5 + input.yaw, input, dt);
   if (p.dying) return fallDying(p, dt);
   p.throttle = input.throttleAbs != null ? input.throttleAbs : THREE.MathUtils.clamp(p.throttle + input.throttle * 0.7 * dt, 0, 1);
@@ -258,6 +269,21 @@ export function flyPlayer(p, input, dt) {
   p.speed = THREE.MathUtils.clamp(p.speed, 0, top * 1.5);
   p.pos.addScaledVector(p.vdir, p.speed * dt); p.pos.y -= p.sink * dt;
   p.firing = !!input.fire;
+  // touchdown: the wheels reach the ground. Home Skies 1917 rules: gently, wings level, nose not down, not too fast
+  const gy = H(p.pos.x, p.pos.z);
+  if (!p.dying && p.pos.y - 1.5 <= gy) {
+    const vs = p.vdir.y * p.speed - p.sink;                                   // vertical speed, negative = sinking
+    const slope = Math.hypot(H(p.pos.x + 3, p.pos.z) - H(p.pos.x - 3, p.pos.z), H(p.pos.x, p.pos.z + 3) - H(p.pos.x, p.pos.z - 3)) / 6;
+    const why = gy < 0.6 ? 'Ditched in the sea' : p.fwd.y < -0.14 ? 'Nosed in' : vs < -5.2 ? 'Hit the ground too hard'
+      : Math.abs(rightY) > 0.42 ? 'Cartwheeled on a wingtip' : p.speed > top * 0.9 ? 'Far too fast to land' : slope > 0.14 ? 'Ran into a hillside' : null;
+    if (why) { p.crashWhy = why; return 'ground'; }
+    p.onGround = true; p.heading = Math.atan2(p.fwd.x, p.fwd.z); p.sink = 0;
+    p.tail = THREE.MathUtils.clamp(Math.asin(THREE.MathUtils.clamp(p.fwd.y, -1, 1)), 0, 0.19);
+    p.pos.y = gy + gearHeight(p.tail);
+    if (vs < -2.4) { p.hp -= (-vs - 2.4) * 6; p.dmg.tail = Math.min(1, p.dmg.tail + 0.1); p.event = 'Hard landing'; }
+    else p.event = vs > -1.2 ? 'A fine landing' : 'Landed';
+    return null;
+  }
   return crashed(p);
 }
 

@@ -4,7 +4,7 @@ import { buildTerrain } from './terrain.js';
 import { createDayNight } from './daynight.js';
 import { buildObjects } from './objects.js';
 import { AIRFIELDS, SECTORS, riverX, HALF, HALF_X, H, coastZ, coastW, coastE } from './world.js';
-import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, BOT_LEVELS, botSettings, COLLIDE_RADIUS, flight, setFlight, FLIGHT_DEFAULT, ZONE_TEXT, zoneAt, takeHit, systems, startDying, flyPlayer, flyBot, flyRemote, hooks } from './plane.js';
+import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, BOT_LEVELS, botSettings, COLLIDE_RADIUS, overOwnField, flight, setFlight, FLIGHT_DEFAULT, ZONE_TEXT, zoneAt, takeHit, systems, startDying, flyPlayer, flyBot, flyRemote, hooks } from './plane.js';
 import { createFront, POINT, CELLS, CELL_HP, SIDE_NAME, NATION, TEAM_TINT, SHIP_LEN } from './front.js';
 import { connect } from './net.js';
 import { startSound, updateSound, updateOthers, toggleMute, setMuted, isMuted, CHANNELS, getVolume, setVolume, resetVolumes, previewSound, gunSound, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
@@ -127,7 +127,7 @@ function die(p, by, collidedWith) {           // destroyed outright: crash, coll
   if (!p.dying) {                                                 // a wreck that was already going down has been counted
     // flew into the ground, a balloon or another aircraft without a fatal hit from the enemy: that is a crash, whoever shot at it earlier
     announce(p, null, collidedWith, false);
-    p.fate = collidedWith === 'balloon' ? 'Flew into a balloon' : collidedWith === 'airship' ? 'Flew into an airship' : collidedWith ? 'Collided' : 'Crashed';
+    p.fate = collidedWith === 'balloon' ? 'Flew into a balloon' : collidedWith === 'airship' ? 'Flew into an airship' : collidedWith ? 'Collided' : p.crashWhy || 'Crashed';
   }
   p.alive = false; p.dying = false; p.firing = false; p.respawnAt = now() + RESPAWN; explode(p.pos);
 }
@@ -262,6 +262,8 @@ function step(t, dt) {
       if (p === me) msgs.forEach(say);
       if (why) goDown(p, null, why);
       const crash = p === me ? flyPlayer(p, readInput(), dt) : flyBot(p, planes, t, dt);
+      if (p.event) { if (p === me) say(p.event + (overOwnField(p.team, p.pos.x, p.pos.z) ? '. Roll to a stop to repair and refuel' : '')); p.event = null; }
+      if (!crash) repair(p, t, dt);                               // ground crews at your own airfield
       if (crash) die(p, null, crash === 'balloon' || crash === 'airship' ? crash : undefined);
       else if (t - p.spawnedAt > 3 && !p.dying && !p.onGround) {                           // mid-air collision: each owner destroys its own aircraft
         for (const o of planes.values()) if (o !== p && o.alive && !o.onGround && t - (o.spawnedAt || 0) > 3 && o.pos.distanceToSquared(p.pos) < COLLIDE_RADIUS * COLLIDE_RADIUS) { die(p, null, o.id); if (o.local) die(o, null, p.id); break; }
@@ -332,6 +334,20 @@ function step(t, dt) {
   if (net && t > nextSend) { nextSend = t + 1 / SEND_HZ; net.send(packState()); }
 }
 let hitFlash = 0;
+// Ground crews at your own airfield: rolled out and nearly stopped, they repair and refuel quickly; still rolling,
+// or on a low pass over the strip (under 20 m above it), more slowly.
+const REPAIR_FAST = 0.4, REPAIR_SLOW = 0.15, LOW_PASS = 20;     // share of full health restored per second
+function repair(p, t, dt) {
+  if (!p.alive || p.dying || !overOwnField(p.team, p.pos.x, p.pos.z)) return;
+  if (!p.onGround && p.pos.y - H(p.pos.x, p.pos.z) > LOW_PASS) return;
+  const rate = (p.onGround && p.speed < 6 ? REPAIR_FAST : REPAIR_SLOW) * dt, max = TYPES[p.type].hp, D = p.dmg;
+  const needed = p.hp < max || p.fuel < 1 || p.fire || Object.values(D).some(v => v > 0);
+  if (!needed) { if (p === me && p.repairing > 0 && t - p.repairing < 0.5) say('Repairs complete'); p.repairing = -9; return; }
+  p.hp = Math.min(max, p.hp + max * rate); p.fuel = Math.min(1, p.fuel + rate);
+  for (const z in D) D[z] = Math.max(0, D[z] - rate);
+  if (p.onGround) p.fire = false;                                           // the crew put the fire out
+  p.repairing = t;
+}
 const BE = new THREE.Vector3();
 // the side that has won the round, or null
 function winner() {
@@ -492,6 +508,7 @@ function drawHud(t) {
   const won = winner();
   $('msg').innerHTML = won ? `${NATION[won]} wins the ${mode === 'front' ? 'battle' : 'round'}<small>next round starting…</small>`
     : me.alive && me.dying ? 'Going down<small>out of control</small>'
+    : me.alive && t - me.repairing < 0.4 ? `${me.onGround ? (me.speed < 6 ? 'Repairing and refuelling' : 'Repairing') : 'Ground crew at work'}<small>${me.onGround && me.speed >= 6 ? 'roll to a stop for faster repairs · ' : ''}${Math.round(100 * Math.min(me.hp / TYPES[me.type].hp, 1 - Math.max(...Object.values(me.dmg))))}% fit</small>`
     : me.alive && me.onGround ? (me.throttle < 0.5 ? 'On the runway<small>open the throttle (Shift)</small>' : me.speed > TYPES[me.type].stall * 1.1 ? 'Flying speed<small>ease the stick back</small>' : '')
     : me.alive && me.fire ? 'On fire<small>dive hard to blow it out</small>'
     : !me.alive ? `${me.fate || 'Crashed'}<small>back in the air in ${Math.max(0, Math.ceil(me.respawnAt - t))} s</small>`
