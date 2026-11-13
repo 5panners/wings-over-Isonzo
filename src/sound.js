@@ -1,5 +1,5 @@
 // Sound with Web Audio: a recorded engine loop, plus synthesised wind, guns, hits and explosions.
-let ctx = null, master, eng, wind, noise, muted = false, loopBuf = null;
+let ctx = null, master, eng, wind, noise, muted = false, loopBuf = null, rainNodes = null;
 
 // One volume per kind of sound. 100% is the designed level; each can go from silent to double.
 export const CHANNELS = [
@@ -7,6 +7,8 @@ export const CHANNELS = [
   { key: 'engine', label: 'Your engine', hint: 'The propeller note, rising and falling with the throttle' },
   { key: 'flyby', label: 'Other aircraft', hint: 'Engines of nearby aircraft, with the Doppler pitch drop as they pass' },
   { key: 'wind', label: 'Wind', hint: 'Air noise that builds with speed' },
+  { key: 'rain', label: 'Rain', hint: 'Rain on the aircraft, louder in a heavy storm' },
+  { key: 'thunder', label: 'Thunder', hint: 'Thunder rolling in after the lightning, later the further away the strike' },
   { key: 'guns', label: 'Guns', hint: 'Your guns and everyone else\'s' },
   { key: 'jingle', label: 'Capture jingles', hint: 'The fanfare when your side takes the point, and the sad phrase when it is lost' },
   { key: 'cannons', label: 'Airship cannons', hint: 'The heavy guns on the airships, and their shells bursting' },
@@ -60,6 +62,8 @@ export function startSound() {
   src.buffer = noise; src.loop = true; bp.type = 'bandpass'; bp.Q.value = 0.6; wg.gain.value = 0;
   src.connect(bp); bp.connect(wg); wg.connect(bus.wind); src.start();
   wind = { bp, g: wg };
+  // rain: two offset loops of band-passed noise, a hiss with a patter on top
+  rainNodes = [[2800, 0.4, 0.3], [900, 0.7, 1.1]].map(([f, q, off]) => { const s = ctx.createBufferSource(), flt = ctx.createBiquadFilter(), g = ctx.createGain(); s.buffer = noise; s.loop = true; flt.type = 'bandpass'; flt.frequency.value = f; flt.Q.value = q; g.gain.value = 0; s.connect(flt); flt.connect(g); g.connect(bus.rain); s.start(0, off); return g; });
 }
 
 // Make a recording loop without a click: cut the silence MP3 encoding leaves at each end, then fade the
@@ -129,14 +133,14 @@ export function updateOthers(list) {
 export const otherVoices = () => voices.map(v => ({ id: v.id, vol: +v.vol.toFixed(3), rate: +v.rate.toFixed(2) }));   // for tests
 
 const near = dist => 1 / (1 + (dist / 70) * (dist / 70));          // loudness falls off with distance
-function burst(out, dur, type, f0, f1, gain) {                           // a filtered slice of noise with a decaying envelope
-  const src = ctx.createBufferSource(), flt = ctx.createBiquadFilter(), g = ctx.createGain(), t = ctx.currentTime;
+function burst(out, dur, type, f0, f1, gain, at = 0) {                  // a filtered slice of noise with a decaying envelope, starting 'at' seconds from now
+  const src = ctx.createBufferSource(), flt = ctx.createBiquadFilter(), g = ctx.createGain(), t = ctx.currentTime + at;
   src.buffer = noise; flt.type = type; flt.frequency.setValueAtTime(f0, t); flt.frequency.exponentialRampToValueAtTime(f1, t + dur);
   g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
   src.connect(flt); flt.connect(g); g.connect(out); src.start(t, Math.random() * 1.5, dur + 0.02);
 }
-function tone(out, dur, type, f0, f1, gain) {
-  const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime;
+function tone(out, dur, type, f0, f1, gain, at = 0) {
+  const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime + at;
   o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
   g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
   o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + 0.02);
@@ -195,6 +199,18 @@ export function lostJingle() {
   brass(NOTE.G3, 2.15, 1.5, 0.1, 1); brass(NOTE.Eb4, 2.15, 1.5, 0.06, 1);
   for (const at of [0, 0.55, 1.1, 1.65, 2.15]) { tone(bus.jingle, 0.22, 'sine', 90, 45, 0.5); drum(at + 0.02, 0.05); }
 }
+// Rain on the aircraft, level 0..1 (called every frame).
+export function setRain(level) {
+  if (!ctx || !rainNodes) return; const t = ctx.currentTime;
+  rainNodes[0].gain.setTargetAtTime(level * (0.05 + 0.2 * level), t, 0.4); rainNodes[1].gain.setTargetAtTime(level * level * 0.28, t, 0.4);
+}
+// Thunder after a delay (seconds): near strikes open with a sharp crack, every strike ends in a long rolling rumble that gets duller with distance.
+export function thunderSound(dist, delay = 0) {
+  if (!ctx) return; const v = Math.max(0.14, 1 / (1 + (dist / 700) * (dist / 700))), d = Math.max(0, delay);
+  if (dist < 420) { burst(bus.thunder, 0.14, 'highpass', 4800, 1500, 0.9 * v, d); burst(bus.thunder, 0.4, 'lowpass', 2800, 130, 1.3 * v, d); tone(bus.thunder, 0.6, 'sine', 75, 24, 1.1 * v, d); }
+  const n = 4 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < n; i++) burst(bus.thunder, 1.4 + Math.random() * 2, 'lowpass', 300 + Math.random() * 260 - dist * 0.12, 45, (0.62 - i * 0.07) * v * (0.6 + Math.random() * 0.6), d + 0.1 + i * 0.34 + Math.random() * 0.35);
+}
 export function boomSound(dist) {
   if (!ctx) return; const v = Math.max(0.12, near(dist * 0.4));
   burst(bus.booms, 1.4, 'lowpass', 900, 50, 0.9 * v); tone(bus.booms, 0.5, 'sine', 90, 30, 0.5 * v);
@@ -209,6 +225,8 @@ export function previewSound(key) {
   if (key === 'guns') for (let i = 0; i < 6; i++) later(() => gunSound(0, true), i * 90);
   else if (key === 'cannons') { cannonSound(0); later(() => crumpSound(20), 900); later(() => cannonSound(0), 1700); }
   else if (key === 'jingle') { captureJingle(); later(lostJingle, 3600); }
+  else if (key === 'rain' && rainNodes) { const t = ctx.currentTime; for (const [g, a] of [[rainNodes[0], 0.3], [rainNodes[1], 0.28]]) { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(a, t + 0.7); g.gain.setValueAtTime(a, t + 2.0); g.gain.linearRampToValueAtTime(0, t + 3.0); } }
+  else if (key === 'thunder') { thunderSound(150, 0); later(() => thunderSound(900, 0.3), 3800); }
   else if (key === 'hits') { hitTakenSound(); later(hitScoredSound, 350); later(hitTakenSound, 700); }
   else if (key === 'booms') boomSound(120);
   else if (key === 'master') { for (let i = 0; i < 4; i++) later(() => gunSound(0, true), i * 90); later(() => cannonSound(40), 450); later(() => boomSound(120), 1100); }

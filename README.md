@@ -91,6 +91,16 @@ Aircraft in view carry a marker with name and distance: a diamond for enemies, a
 
 Each side flies its own flag, built from flat-coloured cells (no textures): Italy's tricolore with the crowned Savoy shield, and the Austro-Hungarian imperial war ensign, red-white-red with the Austrian and Hungarian arms under a crown (simplified to fit the grid). They are on the airfield flagpoles, and the capture point flies the flag of whoever holds it, or plain white if nobody does. The flags wave in a wind that drifts slowly and gusts, and the airfield windsocks stream downwind and droop when it is light. The wind is cosmetic and does not affect flight.
 
+### Weather
+
+Pick the weather on the Game tab (and change it in flight, as host): **Fair**, **Overcast**, **Rain**, **Thunderstorm**, or **Changeable**, which drifts between them every minute or two. The weather fades in over about 15 seconds.
+
+- **Look:** cloud cover dims the sun, greys the sky and haze, and builds a dark cloud deck. Rain streaks lean the way you are flying through them, and rain and storms close the view in. The wind in the flags and windsocks strengthens.
+- **Thunderstorm:** lightning bolts and sheet lightning flash the whole sky and light the ground where they strike. Thunder follows each strike, later the further away it is, with a sharp crack from near ones. Strikes are cosmetic and cannot hit you.
+- **Turbulence:** rain and storms shake your aircraft. The Flight tab has a Turbulence slider (off to 200%).
+- **Sound:** Rain and Thunder each have a slider and Test button on the Audio tab.
+- **Shared battles:** the host's weather applies to everyone. Each player's own lightning and wind are random, so strikes differ between players.
+
 ### Nav lights and jingles
 
 At night the airfield runways light up: orange lamps along both edges, green across the threshold where the take-off run starts and red at the far end, with a flashing beacon on a mast (Italy once every four seconds, Austria-Hungary twice). They come on through the dusk and flicker a little like flames.
@@ -167,6 +177,7 @@ URL parameters: `name`, `pw`, `team` (`it` / `ah`), `size` (1–6), `time` (star
 | `src/terrain.js` | Terrain, trees, sky, and the water shader for the river and sea |
 | `src/objects.js` | Aircraft, balloons, airfields, towns, ground-target models |
 | `src/guns.js` | Machine-gun models for the airships and aircraft, and the muzzle flash |
+| `src/weather.js` | Weather: cloud deck, rain, lightning, thunder timing, turbulence |
 | `src/flags.js` | The national flags, the wind, and the windsocks' motion |
 | `src/front.js` | Zeppelin Front mode: airships, the Gradisca capture point, tickets, bot objectives |
 | `src/plane.js` | Aircraft types, flight model, bot pilot |

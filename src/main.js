@@ -6,9 +6,10 @@ import { buildObjects, updateWindows, updateNavLights } from './objects.js';
 import { AIRFIELDS, SECTORS, riverX, HALF, HALF_X, H, coastZ, coastW, coastE } from './world.js';
 import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, BOT_LEVELS, botSettings, COLLIDE_RADIUS, overOwnField, flight, setFlight, FLIGHT_DEFAULT, ZONE_TEXT, zoneAt, takeHit, systems, startDying, flyPlayer, flyBot, flyRemote, hooks } from './plane.js';
 import { updateFlags } from './flags.js';
+import { createWeather, WEATHER } from './weather.js';
 import { createFront, POINT, CELLS, CELL_HP, SIDE_NAME, NATION, TEAM_TINT, SHIP_LEN } from './front.js';
 import { connect } from './net.js';
-import { startSound, updateSound, updateOthers, toggleMute, setMuted, isMuted, CHANNELS, getVolume, setVolume, resetVolumes, previewSound, gunSound, cannonSound, crumpSound, captureJingle, lostJingle, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
+import { startSound, updateSound, updateOthers, toggleMute, setMuted, isMuted, CHANNELS, getVolume, setVolume, resetVolumes, previewSound, setRain, thunderSound, gunSound, cannonSound, crumpSound, captureJingle, lostJingle, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
 import { pollGamepad, updateControls, initControls, toggleControls, controlsOpen } from './gamepad.js';
 
 const MAX_PER_TEAM = 6, SCORE_LIMIT = 30, RESPAWN = 5, SEND_HZ = 15;
@@ -27,8 +28,10 @@ renderer.shadowMap.enabled = new URLSearchParams(location.search).get('shadows')
  renderer.shadowMap.type = THREE.PCFShadowMap;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, 1, 1, 12000);
-const { sun, hemi, updateWater } = buildTerrain(scene);
+const { sun, hemi, updateWater, clouds } = buildTerrain(scene);
 const sky = createDayNight(scene, { sun, hemi });   // sky.tod = hour of day, sky.rate = clock speed
+// weather: fair / overcast / rain / thunderstorm (or changeable); see weather.js
+const weather = createWeather(scene, { sky, camera, clouds, fx: { light: (p, peak, life, range) => flashLight(p, peak, life, range, 2, '#cfe0ff'), thunder: (d, delay) => thunderSound(d, delay), rain: l => setRain(l) } });
 buildObjects(scene).setMode({ map: false, rings: false, flights: [], lineup: false });
 { const s = sun.shadow.camera; s.near = 100; s.far = 4500; }   // its width is set every frame by sky.update
 const hud = $('hud'), ctx = hud.getContext('2d');
@@ -166,7 +169,7 @@ function packState() {
   const e = [];
   for (const p of planes.values()) if (p.local) e.push([p.id, p.name, p.team, p.type, +p.pos.x.toFixed(1), +p.pos.y.toFixed(1), +p.pos.z.toFixed(1), +p.quat.x.toFixed(3), +p.quat.y.toFixed(3), +p.quat.z.toFixed(3), +p.quat.w.toFixed(3), +p.speed.toFixed(1), Math.round(p.hp), (p.alive ? 1 : 0) | (p.firing ? 2 : 0) | (p.isBot ? 4 : 0) | (p.dying ? 8 : 0) | (p.fire ? 16 : 0) | (p.dmg.eng > 0.3 ? 32 : 0)]);
   const m = { t: 's', e };
-  if (isHost()) { m.sc = [score.it, score.ah]; m.n = teamSize; m.d = [+sky.tod.toFixed(3), sky.rate]; m.b = botSettings.level; m.md = mode; if (mode === 'front') m.f = front.pack(); }
+  if (isHost()) { m.sc = [score.it, score.ah]; m.n = teamSize; m.d = [+sky.tod.toFixed(3), sky.rate]; m.b = botSettings.level; m.md = mode; m.wx = [weather.index, weather.auto ? 1 : 0]; if (mode === 'front') m.f = front.pack(); }
   return m;
 }
 function onMessage(m, from) {
@@ -191,6 +194,7 @@ function onMessage(m, from) {
       score.it = m.sc[0]; score.ah = m.sc[1]; teamSize = m.n; if (m.b != null) botSettings.level = THREE.MathUtils.clamp(m.b | 0, -1, BOT_LEVELS.length - 1);
       if ((m.md === 'front' || m.md === 'dogfight') && m.md !== mode) setMode(m.md);    // the host's mode is everyone's mode
       if (m.f && mode === 'front') front.unpack(m.f, t);
+      if (m.wx) weather.follow(m.wx[0]);                                         // the host's weather is everyone's weather
       if (m.d) { sky.rate = +m.d[1] || 0; const off = Math.abs(sky.tod - m.d[0]); if (Math.min(off, 24 - off) > 0.03) sky.tod = +m.d[0] || 0; }   // the host's clock is everyone's clock
     }
   } else if (m.t === 'x') {                                   // someone's bullet hit a plane we own
@@ -266,6 +270,7 @@ function frame() {
   updateWindows(sky.night, sky.tod);
   updateNavLights(sky.night, t);
   updateWater(t, sun, hemi);
+  weather.update(dt, t, isHost(), me && me.alive ? V2.copy(me.vdir).multiplyScalar(me.speed) : V2.set(0, 0, 0));
   updateCamera(dt);
   renderer.render(scene, camera);
   drawHud(t);
@@ -282,6 +287,10 @@ function step(t, dt) {
       if (why) goDown(p, null, why);
       const crash = p === me ? flyPlayer(p, readInput(), dt) : flyBot(p, planes, t, dt);
       if (p.event) { if (p === me) say(p.event + (overOwnField(p.team, p.pos.x, p.pos.z) ? '. Roll to a stop to repair and refuel' : '')); p.event = null; }
+      if (p === me && !p.onGround && !p.dying && weather.turbulence > 0.01) {                      // rough air: the aircraft is shaken about, as in Home Skies 1917
+        const tb = weather.turbulence * flight.turb * dt;
+        p.quat.multiply(TB1.setFromAxisAngle(Zax, (Math.sin(t * 1.7) + Math.sin(t * 4.3 + 1)) * 0.22 * tb)).multiply(TB2.setFromAxisAngle(XAX, (Math.sin(t * 2.3 + 2) + Math.sin(t * 5.1)) * 0.12 * tb)); p.quat.normalize();
+      }
       if (!crash) repair(p, t, dt);                               // ground crews at your own airfield
       if (crash) die(p, null, crash === 'balloon' || crash === 'airship' ? crash : undefined);
       else if (t - p.spawnedAt > 3 && !p.dying && !p.onGround) {                           // mid-air collision: each owner destroys its own aircraft
@@ -372,7 +381,7 @@ function repair(p, t, dt) {
   if (p.onGround) p.fire = false;                                           // the crew put the fire out
   p.repairing = t;
 }
-const BE = new THREE.Vector3();
+const BE = new THREE.Vector3(), TB1 = new THREE.Quaternion(), TB2 = new THREE.Quaternion(), XAX = new THREE.Vector3(1, 0, 0);
 // a shell going off: a dark flak puff with a hot centre, bigger and brighter if it struck something
 function shellBurst(pos, struck) {
   for (let i = 0; i < (struck ? 6 : 4); i++) puff(pos, i % 3 ? '#2d2a28' : '#55504a', 2 + Math.random() * 2.5, 1.2 + Math.random() * 1.4, 1.5, 5);
@@ -549,12 +558,13 @@ function drawHud(t) {
     : !me.alive ? `${me.fate || 'Crashed'}<small>back in the air in ${Math.max(0, Math.ceil(me.respawnAt - t))} s</small>`
     : oobSince ? 'Turn back<small>you are leaving the combat area</small>'
     : me.speed < TYPES[me.type].stall * 1.05 ? 'Stall<small>nose down, throttle up</small>' : '';
-  $('netinfo').textContent = net ? `${net.kind === 'p2p' ? 'peer-to-peer' : 'relay'} · ${net.peers.size + 1} pilot${net.peers.size ? 's' : ''} online${isHost() ? ' · you host the bots' : ''} · ${sky.clock()}` : 'solo flight · ' + sky.clock();
+  const wxLabel = weather.cur.cover + weather.cur.rain > 0.05 ? ' · ' + WEATHER[weather.index].name.toLowerCase() : '';
+  $('netinfo').textContent = net ? `${net.kind === 'p2p' ? 'peer-to-peer' : 'relay'} · ${net.peers.size + 1} pilot${net.peers.size ? 's' : ''} online${isHost() ? ' · you host the bots' : ''} · ${sky.clock()}${wxLabel}` : 'solo flight · ' + sky.clock() + wxLabel;
 }
 
 // ---------------- lobby ----------------
 const params = new URLSearchParams(location.search);
-for (const [id, key] of [['name', 'name'], ['pw', 'pw'], ['team', 'team'], ['size', 'size'], ['relay', 'relay'], ['time', 'time'], ['clock', 'clock'], ['bots', 'bots'], ['startpos', 'start'], ['mode', 'mode']]) if (params.get(key)) $(id).value = params.get(key);
+for (const [id, key] of [['name', 'name'], ['pw', 'pw'], ['team', 'team'], ['size', 'size'], ['relay', 'relay'], ['time', 'time'], ['clock', 'clock'], ['bots', 'bots'], ['startpos', 'start'], ['mode', 'mode'], ['weather', 'weather']]) if (params.get(key)) $(id).value = params.get(key);
 if (!$('name').value) $('name').value = localStorage.getItem('woi-name') || 'Pilot ' + Math.floor(100 + Math.random() * 900);
 
 async function start() {
@@ -562,6 +572,7 @@ async function start() {
   const name = $('name').value.trim().slice(0, 20) || 'Pilot', password = $('pw').value, relay = $('relay').value.trim();
   teamSize = THREE.MathUtils.clamp(+$('size').value || 4, 1, MAX_PER_TEAM);
   onRunway = $('startpos').value === 'runway';
+  weather.set($('weather').value, true);
   setMode($('mode').value);                                                    // switched to the host's mode if joining a battle
   botSettings.level = THREE.MathUtils.clamp(+$('bots').value | 0, -1, BOT_LEVELS.length - 1);
   sky.tod = +$('time').value || 0; sky.rate = +$('clock').value || 0;      // overridden by the host's clock when joining a battle
@@ -578,6 +589,7 @@ async function start() {
         if (heard.d) { sky.tod = +heard.d[0] || 0; sky.rate = +heard.d[1] || 0; }
         if (heard.sc) { score.it = heard.sc[0] | 0; score.ah = heard.sc[1] | 0; }
         if (heard.f && mode === 'front') front.unpack(heard.f, now());
+        if (heard.wx) { weather.set(heard.wx[0], true); weather.follow(heard.wx[0]); }
       }
     }
     const humans = { it: 0, ah: 0 }; for (const p of planes.values()) if (!p.isBot) humans[p.team]++;
@@ -598,13 +610,13 @@ $('camease').addEventListener('input', e => setCamEase(e.target.value / 100));
 // Callsign, password, side and relay belong to the connection, so they are locked. In a shared battle only the host
 // can change the battle itself (mode, bots, pilots per side, time, clock); everybody can change where they start from.
 let applied = {};
-const HOST_FIELDS = ['mode', 'size', 'bots', 'time', 'clock'], LOCKED_FIELDS = ['name', 'pw', 'team', 'relay'];
-function currentSetup() { return { mode, size: String(teamSize), bots: String(botSettings.level), startpos: onRunway ? 'runway' : 'air', time: String(Math.round(sky.tod * 100) / 100), clock: String(sky.rate) }; }
+const HOST_FIELDS = ['mode', 'size', 'bots', 'time', 'clock', 'weather'], LOCKED_FIELDS = ['name', 'pw', 'team', 'relay'];
+function currentSetup() { return { mode, size: String(teamSize), bots: String(botSettings.level), startpos: onRunway ? 'runway' : 'air', time: String(Math.round(sky.tod * 100) / 100), clock: String(sky.rate), weather: weather.auto ? 'auto' : String(weather.index) }; }
 function showLiveSetup() {                                                 // fill the form from what is actually happening now
   if (!running) return;
   const cur = currentSetup(); applied = { ...cur };
   const pick = (id, v) => { const el = $(id), want = String(v); if ([...el.options].some(o => o.value === want)) el.value = want; };
-  pick('mode', cur.mode); pick('size', cur.size); pick('bots', cur.bots); pick('startpos', cur.startpos); pick('clock', cur.clock);
+  pick('mode', cur.mode); pick('size', cur.size); pick('bots', cur.bots); pick('startpos', cur.startpos); pick('clock', cur.clock); pick('weather', cur.weather);
   const near = [...$('time').options].map(o => +o.value).sort((a, b) => Math.abs(a - sky.tod) - Math.abs(b - sky.tod))[0];
   $('time').dataset.shown = near; pick('time', near);                      // the menu only has a few hours; "applied" remembers it so an untouched menu changes nothing
   applied.time = String(near);
@@ -619,13 +631,14 @@ function enterLiveSetup() {
   showLiveSetup();
 }
 function applyLiveSetup() {
-  const f = { mode: $('mode').value, size: $('size').value, bots: $('bots').value, startpos: $('startpos').value, time: $('time').value, clock: $('clock').value }, host = isHost(), changes = [];
+  const f = { mode: $('mode').value, size: $('size').value, bots: $('bots').value, startpos: $('startpos').value, time: $('time').value, clock: $('clock').value, weather: $('weather').value }, host = isHost(), changes = [];
   if (f.startpos !== applied.startpos) { onRunway = f.startpos === 'runway'; changes.push(onRunway ? 'you start on the runway' : 'you start in the air'); }
   if (host) {
     const restart = f.mode !== applied.mode || f.size !== applied.size;
     if (f.bots !== applied.bots) { botSettings.level = THREE.MathUtils.clamp(+f.bots | 0, -1, BOT_LEVELS.length - 1); changes.push('bots: ' + $('bots').selectedOptions[0].textContent.split(' — ')[0].toLowerCase()); }
     if (f.time !== applied.time) { sky.tod = +f.time; changes.push('time ' + sky.clock()); }
     if (f.clock !== applied.clock) { sky.rate = +f.clock; changes.push('clock ' + $('clock').selectedOptions[0].textContent.toLowerCase()); }
+    if (f.weather !== applied.weather) { weather.set(f.weather); changes.push('weather: ' + $('weather').selectedOptions[0].textContent.toLowerCase()); }
     if (f.size !== applied.size) { teamSize = THREE.MathUtils.clamp(+f.size || 1, 1, MAX_PER_TEAM); changes.push(`${teamSize} per side`); }
     if (f.mode !== applied.mode) { setMode(f.mode); changes.push(f.mode === 'front' ? 'Zeppelin Front' : 'Dogfight'); }
     if (restart) {                                                           // a fresh round: scores and objectives reset, everybody respawns
@@ -675,12 +688,13 @@ const FLIGHT_ROWS = [
   { key: 'stall', label: 'Stall speed', min: 60, max: 130, hint: 'Below this the wings stop lifting. Lower is more forgiving in tight turns', fmt: v => `${v}%  (SPAD ${Math.round(SPAD_STALL * v / 100)} km/h)` },
   { key: 'top', label: 'Top speed', min: 80, max: 130, hint: 'Engine power: the level top speed and how fast you climb', fmt: v => `${v}%  (SPAD ${Math.round(SPAD_TOP * v / 100)} km/h)` },
   { key: 'bleed', label: 'Speed lost in turns', min: 0, max: 200, hint: 'How much speed hard pulls cost. Lower keeps energy in a dogfight', fmt: v => v + '%' },
+  { key: 'turb', label: 'Turbulence', min: 0, max: 200, hint: 'How hard rough air in rain and storms shakes the aircraft', fmt: v => v ? v + '%' : 'off' },
   { key: 'tough', label: 'Aircraft toughness', min: 50, max: 300, hint: 'How much punishment your aircraft takes before systems fail and it goes down', fmt: v => v + '%' },
 ];
 const FLIGHT_PRESETS = {
-  forgiving: { level: 0.5, stall: 0.85, bleed: 0.6, tough: 1.5, top: 1, pitch: 1, roll: 1, rudder: 1 },
+  forgiving: { turb: 0.5, level: 0.5, stall: 0.85, bleed: 0.6, tough: 1.5, top: 1, pitch: 1, roll: 1, rudder: 1 },
   standard: { ...FLIGHT_DEFAULT, invert: flight.invert },
-  demanding: { level: 0, stall: 1.1, bleed: 1.4, tough: 0.8, top: 1, pitch: 1, roll: 1, rudder: 1 },
+  demanding: { turb: 1.3, level: 0, stall: 1.1, bleed: 1.4, tough: 0.8, top: 1, pitch: 1, roll: 1, rudder: 1 },
 };
 $('flt-rows').innerHTML = FLIGHT_ROWS.map(r => `<div class="aud-row flt"><span>${r.label}</span><input type="range" min="${r.min}" max="${r.max}" step="5" data-flt="${r.key}" aria-label="${r.label}"><output data-fout="${r.key}"></output></div><p class="aud-hint">${r.hint}</p>`).join('');
 function showFlight() {
@@ -705,6 +719,6 @@ showVolumes();
 applyGfx(false);
 $('form').addEventListener('submit', e => { e.preventDefault(); if (running) applyLiveSetup(); else start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
-window.__woi = { shellStats, LIGHTS, front, get mode() { return mode; }, setMode, flight, shadowExtent: () => sun.shadow.camera.right, gfx, renderer, explode, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
+window.__woi = { weather, shellStats, LIGHTS, front, get mode() { return mode; }, setMode, flight, shadowExtent: () => sun.shadow.camera.right, gfx, renderer, explode, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
 frame();
 if (params.get('autostart')) start();

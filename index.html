@@ -95,7 +95,7 @@
 <body>
 <canvas id="c"></canvas>
 <canvas id="hud"></canvas>
-<div id="build" aria-label="Build number">Build 48</div>
+<div id="build" aria-label="Build number">Build 50</div>
 <div id="ui">
   <div id="score" class="panel"></div>
   <div id="stats" class="panel"></div>
@@ -140,6 +140,8 @@
       <div><label for="clock">Clock</label>
         <select id="clock"><option value="0">Stopped</option><option value="1">Real time</option><option value="12">One hour every 5 minutes</option><option value="60" selected>One hour every minute</option><option value="240">One hour every 15 seconds</option></select></div>
     </div>
+    <label for="weather">Weather</label>
+    <select id="weather"><option value="0" selected>Fair</option><option value="1">Overcast</option><option value="2">Rain</option><option value="3">Thunderstorm — lightning and thunder</option><option value="auto">Changeable — drifts between them</option></select>
     <details><summary>Connection options</summary>
       <label for="relay">WebSocket relay <small>— only if peer-to-peer fails; everyone must use the same one</small></label>
       <input id="relay" placeholder="wss://your-relay.example">

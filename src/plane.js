@@ -196,7 +196,7 @@ function crashed(p) {
 
 // ---------- player flight options (Options > Flight) ----------
 // All 1 = the standard model. They apply to the player's own aircraft only; bots always fly the standard one.
-export const FLIGHT_DEFAULT = { invert: false, level: 0, pitch: 1, roll: 1, rudder: 1, stall: 1, top: 1, bleed: 1, tough: 1 };
+export const FLIGHT_DEFAULT = { invert: false, level: 0, pitch: 1, roll: 1, rudder: 1, stall: 1, top: 1, bleed: 1, tough: 1, turb: 1 };
 export const flight = { ...FLIGHT_DEFAULT };
 try { const s = JSON.parse(localStorage.getItem('woi-flight') || '{}'); for (const k in flight) if (typeof s[k] === typeof flight[k] && (typeof s[k] !== 'number' || Number.isFinite(s[k]))) flight[k] = s[k]; } catch { /* no storage */ }
 export function setFlight(patch) {
@@ -224,7 +224,7 @@ function groundRoll(p, pitch, steer, input, dt) {
   p.fwd.copy(Z).applyQuaternion(p.quat); p.vdir.set(Math.sin(p.heading), 0, Math.cos(p.heading)); p.sink = 0;
   if (input) p.firing = !!input.fire;
   // unstick: at flying speed with the stick back, or fast under power (with the throttle closed after landing it stays down)
-  if ((p.speed >= takeoff && pitch > 0.1 && td < 0.5) || (p.speed > takeoff * 1.4 && p.power > 0.5)) p.onGround = false;
+  if ((p.speed >= takeoff && pitch > 0.1 && td < 0.5) || (p.speed > takeoff * 1.4 && p.power > 0.5)) { p.onGround = false; p.liftTimer = 0.9; }      // just left the ground: touchdown is ignored for a moment
   if (p.pos.y < 1.2) return 'ground';                                                                    // rolled into the sea
   return Math.abs(p.pos.x) > HALF_X + 220 || Math.abs(p.pos.z) > HALF + 220 ? 'bounds' : null;
 }
@@ -238,6 +238,7 @@ const groundEffect = p => { const a = p.pos.y - H(p.pos.x, p.pos.z); return a < 
 // input = { pitch, roll, yaw (-1..1), throttle (-1..1 change), throttleAbs (0..1 or null), fire }
 export function flyPlayer(p, input, dt) {
   const t = TYPES[p.type], fo = flight, top = t.top * fo.top, q = p.quat, D = p.dmg, wing = wingDamage(p), stall = t.stall * fo.stall * (1 + 0.35 * wing) * groundEffect(p);
+  p.liftTimer = Math.max(0, (p.liftTimer || 0) - dt);
   if (p.onGround) return groundRoll(p, input.pitch, input.roll * 0.5 + input.yaw, input, dt);
   if (p.dying) return fallDying(p, dt);
   p.throttle = input.throttleAbs != null ? input.throttleAbs : THREE.MathUtils.clamp(p.throttle + input.throttle * 0.7 * dt, 0, 1);
@@ -279,8 +280,11 @@ export function flyPlayer(p, input, dt) {
   p.firing = !!input.fire;
   // touchdown: the wheels reach the ground. Home Skies 1917 rules: gently, wings level, nose not down, not too fast
   const gy = H(p.pos.x, p.pos.z);
-  if (!p.dying && p.pos.y - 1.5 <= gy) {
-    const vs = p.vdir.y * p.speed - p.sink;                                   // vertical speed, negative = sinking
+  const vs = p.vdir.y * p.speed - p.sink;                                       // vertical speed, negative = sinking
+  // Just after lift-off, or while still climbing away, the wheels are near the ground but that is not a landing:
+  // only an aircraft that is level or coming down onto the ground touches down. Never let it sink into the runway.
+  if (p.liftTimer > 0 || vs >= 0.3) { if (p.pos.y < gy + gearHeight(0.02)) p.pos.y = gy + gearHeight(0.02); }
+  else if (!p.dying && p.pos.y - 1.5 <= gy) {
     const slope = Math.hypot(H(p.pos.x + 3, p.pos.z) - H(p.pos.x - 3, p.pos.z), H(p.pos.x, p.pos.z + 3) - H(p.pos.x, p.pos.z - 3)) / 6;
     const why = gy < 0.6 ? 'Ditched in the sea' : p.fwd.y < -0.14 ? 'Nosed in' : vs < -5.2 ? 'Hit the ground too hard'
       : Math.abs(rightY) > 0.42 ? 'Cartwheeled on a wingtip' : p.speed > top * 0.9 ? 'Far too fast to land' : slope > 0.14 ? 'Ran into a hillside' : null;

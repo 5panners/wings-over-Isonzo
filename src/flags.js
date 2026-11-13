@@ -52,7 +52,7 @@ function flagGeometry(design) {
 }
 
 // ---- the wind ----
-export const wind = { angle: 2.35, speed: 0.5 };             // angle: direction it blows toward, in the x-z plane (atan2(z, x)); speed 0..1
+export const wind = { angle: 2.35, speed: 0.5, boost: 0 };      // boost: extra strength from the weather             // angle: direction it blows toward, in the x-z plane (atan2(z, x)); speed 0..1
 const timeU = { value: 0 }, windU = { value: 0.5 };
 const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide });
 material.onBeforeCompile = sh => {
@@ -84,7 +84,7 @@ export function registerArm(arm, kind = 'flag') { arms.push({ arm, kind, yaw: nu
 
 export function updateFlags(t, dt) {
   wind.angle = 2.35 + 0.55 * Math.sin(t * 0.021) + 0.25 * Math.sin(t * 0.07 + 1);
-  wind.speed = THREE.MathUtils.clamp(0.5 + 0.28 * Math.sin(t * 0.11) + 0.18 * Math.sin(t * 0.43 + 2), 0.12, 1);
+  wind.speed = THREE.MathUtils.clamp(0.5 + wind.boost + 0.28 * Math.sin(t * 0.11) + 0.18 * Math.sin(t * 0.43 + 2) * (1 + wind.boost * 3), 0.12, 1);
   timeU.value = t % 1000; windU.value = wind.speed;
   for (const r of arms) {
     const target = -wind.angle - yawOf(r.arm.parent);

@@ -19,7 +19,7 @@ function arc(hour, out) {
 }
 
 export function createDayNight(scene, { sun: light, hemi }) {
-  const sky = scene.getObjectByName('sky'), far = scene.children.filter(o => o.name === 'far'), clouds = scene.getObjectByName('clouds');
+  const sky = scene.getObjectByName('sky'), skyMesh = sky, far = scene.children.filter(o => o.name === 'far'), clouds = scene.getObjectByName('clouds');
   const cloudMat = clouds.children[0].children[0].material;
   const skyPos = sky.geometry.attributes.position, skyCol = sky.geometry.attributes.color;
   const basic = c => new THREE.MeshBasicMaterial({ color: c, fog: false });
@@ -38,10 +38,13 @@ export function createDayNight(scene, { sun: light, hemi }) {
   // blend the three looks by the sun's height: dusk -> day as it climbs, dusk -> night as it sinks
   const blend = (key, d, n, out) => out.copy(LOOK.dusk[key]).lerp(LOOK.day[key], d).lerp(LOOK.night[key], n);
   const num = (key, d, n) => { const v = LOOK.dusk[key] + (LOOK.day[key] - LOOK.dusk[key]) * d; return v + (LOOK.night[key] - v) * n; };
-  let lastE = 9, shadowExtent = 0;
+  let lastE = 9, lastCov = -1, lastDark = -1, shadowExtent = 0;
+  // desaturate toward a grey of the same brightness, darker in a storm: how cloud looks on sky and haze
+  const greyen = (c, amt, dark) => { const l = (c.r * 0.3 + c.g * 0.59 + c.b * 0.11) * (0.92 - 0.45 * dark); c.r += (l - c.r) * amt; c.g += (l - c.g) * amt; c.b += (l - c.b) * amt; return c; };
 
   const api = {
     night: 0,          // 0 by day .. 1 in full darkness
+    cover: 0, dark: 0, vis: 0, flash: 0,   // weather (set by weather.js): cloud cover, storm darkness, poor visibility, lightning flash, each 0..1
     shadows: true,     // graphics option
     tod: 6,            // hour of day, 0..24
     rate: 12,          // game hours per real hour (1 = real time, 0 = stopped)
@@ -55,6 +58,7 @@ export function createDayNight(scene, { sun: light, hemi }) {
       const bySun = e > 0, dir = bySun ? sunDir : moonDir;
       if (bySun) { light.color.copy(lowSun).lerp(highSun, sst(0, 0.4, e)); light.intensity = 2.6 * sst(0, 0.14, e); }
       else { light.color.copy(moonLight); light.intensity = 0.75 * sst(0.02, 0.2, moonDir.y) * n; }
+      light.intensity *= (1 - 0.74 * api.cover) * (1 - 0.3 * api.dark);                                 // cloud takes the sun
       light.castShadow = api.shadows && light.intensity > 0.02;
       if (Math.abs(extent - shadowExtent) > shadowExtent * 0.04) {
         shadowExtent = extent; const s = light.shadow.camera; s.left = s.bottom = -extent; s.right = s.top = extent; s.updateProjectionMatrix();
@@ -67,16 +71,21 @@ export function createDayNight(scene, { sun: light, hemi }) {
       sunDisc.position.copy(camera.position).addScaledVector(sunDir, 6400); halo.position.copy(sunDisc.position);
       moonDisc.position.copy(camera.position).addScaledVector(moonDir, 6300); stars.position.copy(camera.position);
       sunDisc.material.color.copy(lowSun).lerp(highSun, sst(0, 0.35, e)); halo.material.color.copy(sunDisc.material.color);
-      sunDisc.visible = halo.visible = e > -0.08; moonDisc.visible = moonDir.y > -0.08;
-      stars.material.opacity = n; stars.visible = n > 0.01;
+      sunDisc.visible = halo.visible = e > -0.08 && api.cover < 0.7; moonDisc.visible = moonDir.y > -0.08 && api.cover < 0.7; halo.material.opacity = 0.22 * (1 - api.cover);
+      stars.material.opacity = n * (1 - api.cover); stars.visible = stars.material.opacity > 0.01;
       // ambient light, haze, distant ranges and clouds
-      hemi.intensity = num('hemi', d, n); blend('hemiSky', d, n, hemi.color); blend('hemiGnd', d, n, hemi.groundColor);
-      blend('fog', d, n, scene.fog.color);
-      blend('far', d, n, c1); for (const m of far) m.material.color.copy(c1);
-      cloudMat.emissiveIntensity = num('cloud', d, n);
+      const cov = api.cover, dk = api.dark, fl = api.flash;
+      hemi.intensity = num('hemi', d, n) * (1 - (0.3 * cov + 0.3 * dk) * (1 - 0.5 * n)) + 2.6 * fl; blend('hemiSky', d, n, hemi.color); blend('hemiGnd', d, n, hemi.groundColor);
+      greyen(hemi.color, cov * 0.6, dk); if (fl > 0.02) hemi.color.lerp(C('#dfe8ff'), Math.min(1, fl));
+      blend('fog', d, n, scene.fog.color); greyen(scene.fog.color, cov * 0.9, dk); if (fl > 0.02) scene.fog.color.lerp(C('#c4d0ee'), fl * 0.7);
+      scene.fog.near = 500 - 430 * api.vis; scene.fog.far = 3400 - 2150 * api.vis;                   // rain and storm close the view in
+      blend('far', d, n, c1); greyen(c1, cov * 0.85, dk); c1.lerp(scene.fog.color, 0.85 * api.vis); for (const m of far) m.material.color.copy(c1);
+      cloudMat.color.setRGB(1, 1, 1).lerp(C('#6e7480'), Math.min(1, cov * 0.75 + dk * 0.3)); cloudMat.emissiveIntensity = num('cloud', d, n) * (1 - 0.6 * cov) + 3.2 * fl;
+      skyMesh.material.color.setScalar(1 + 3.2 * fl);                                              // lightning lights the whole sky
       // repaint the sky dome only when the light has changed noticeably
-      if (Math.abs(e - lastE) > 0.003) {
-        lastE = e; blend('top', d, n, c1); blend('mid', d, n, c2); blend('hor', d, n, c3);
+      if (Math.abs(e - lastE) > 0.003 || Math.abs(cov - lastCov) > 0.01 || Math.abs(dk - lastDark) > 0.01) {
+        lastE = e; lastCov = cov; lastDark = dk; blend('top', d, n, c1); blend('mid', d, n, c2); blend('hor', d, n, c3);
+        greyen(c1, cov * 0.92, dk); greyen(c2, cov * 0.92, dk); greyen(c3, cov * 0.9, dk);                                 // the horizon matches the haze, or the distant ranges show as dark bands
         const c = new THREE.Color();
         for (let i = 0; i < skyPos.count; i++) {
           const t = Math.max(0, skyPos.getY(i) / 7000);
