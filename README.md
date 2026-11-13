@@ -55,6 +55,20 @@ Each change in handling is announced in the feed. A burning aircraft loses airfr
 
 The sun rises in the east at 06:00 and sets in the west at 18:00; the moon is up through the night. Both light the scene and cast shadows. Pick the starting hour and how fast the clock runs in the lobby, and nudge the time in flight with `[` and `]`. In multiplayer the host's clock applies to everyone.
 
+### Game modes
+
+Pick the mode on the Game tab. In multiplayer the host's mode applies to everyone.
+
+**Zeppelin Front** (the default). Each side starts with 150 tickets and loses when it reaches 0.
+
+- **Airships:** each side has one, patrolling a racetrack about a third of the way from its airfield toward the front. Each has 6 gas cells. Shoot a cell until it bursts into flame; fire then spreads slowly to its neighbours. With 3 cells alight the airship goes down: it noses over, falls burning and explodes on the ground. Losing it costs **50 tickets**. Its gunners defend it from the upper and lower gun positions, and flying into it is fatal.
+- **Gradisca:** the ground point in the middle, between the two airfields. Fly low over it (inside the ring, below the top of the faint wall) to capture it; more of your aircraft than the enemy's makes it go faster, and equal numbers hold it contested. The side holding it drains **1 enemy ticket every 4 seconds**.
+- **Aircraft:** every aircraft lost costs its side **1 ticket**.
+- **Bots:** they take roles in turn: capture Gradisca, attack the enemy airship, hunt fighters, escort their own airship.
+- **HUD:** the bar under the score shows each airship's gas cells and who holds Gradisca. Markers and edge arrows point to both airships and Gradisca, and the minimap shows them too.
+
+**Dogfight.** No objectives; the first side to 30 kills wins the round.
+
 ### Controllers
 
 Gamepads, joysticks, throttles and rudder pedals work alongside the keyboard. The start screen is the first tab of **Options** (Game, Controls, Flight, Graphics, Audio); press `Esc` in flight to reopen the others; controller settings are on the Controls tab.
@@ -107,7 +121,7 @@ How the game stays in sync:
 
 Nothing here is cheat-proof; it is built for friends sharing a password.
 
-URL parameters: `name`, `pw`, `team` (`it` / `ah`), `size` (1–6), `time` (start hour), `clock` (speed), `bots` (-1 none, 0 rookie, 1 regular, 2 ace), `start` (`air` / `runway`), `relay`, `autostart=1`, `shadows=0`.
+URL parameters: `name`, `pw`, `team` (`it` / `ah`), `size` (1–6), `time` (start hour), `clock` (speed), `bots` (-1 none, 0 rookie, 1 regular, 2 ace), `start` (`air` / `runway`), `mode` (`front` / `dogfight`), `relay`, `autostart=1`, `shadows=0`.
 
 ## Layout
 
@@ -117,6 +131,7 @@ URL parameters: `name`, `pw`, `team` (`it` / `ah`), `size` (1–6), `time` (star
 | `src/world.js` | Map definition: terrain height function, coastlines, airfields, balloon sectors, ground targets |
 | `src/terrain.js` | Terrain, trees, sky, and the water shader for the river and sea |
 | `src/objects.js` | Aircraft, balloons, airfields, towns, ground-target models |
+| `src/front.js` | Zeppelin Front mode: airships, the Gradisca capture point, tickets, bot objectives |
 | `src/plane.js` | Aircraft types, flight model, bot pilot |
 | `src/gamepad.js` | Controller bindings, calibration and the setup panel |
 | `src/daynight.js` | Sun, moon, stars, sky colours and the clock |

@@ -30,6 +30,9 @@ const RUNWAY_DIR = { it: 1, ah: -1 }, spawnCount = { it: 0, ah: 0 };
 const gearHeight = tail => 1.51 * Math.cos(tail) - 1.6 * Math.sin(tail);
 // Observation balloons: solid obstacles. Envelope and basket are treated as spheres, the cable as a line to the winch.
 export const BALLOONS = SECTORS.map(s => { const gy = H(s.x, s.z); return { x: s.x, y: gy + s.alt, z: s.z, r: 10.5, basketY: gy + s.alt - 20, wx: s.x + 9, wy: H(s.x + 9, s.z + 7) + 2.5, wz: s.z + 7 }; });
+// Set by a game mode: objective(p) -> what a bot should do, avoid(p) -> escape direction from a large obstacle,
+// collide(pos) -> true if that point is inside one (the aircraft crashes).
+export const hooks = { objective: null, avoid: null, collide: null };
 export const COLLIDE_RADIUS = 4.2;     // two aircraft closer than this have hit each other
 
 export const GUN = { speed: 230, life: 1.5, interval: 0.09, damage: 3, hitRadius: 3.2 };
@@ -166,6 +169,7 @@ function fallDying(p, dt) {
 // Returns a crash reason ('ground' | 'bounds') or null.
 function crashed(p) {
   if (p.pos.y < Math.max(0.4, H(p.pos.x, p.pos.z) + 1)) return 'ground';
+  if (hooks.collide && hooks.collide(p.pos)) return 'airship';
   for (const b of BALLOONS) {
     const dx = p.pos.x - b.x, dz = p.pos.z - b.z; if (dx * dx + dz * dz > 40 * 40) continue;
     if (p.pos.distanceToSquared(v1.set(b.x, b.y, b.z)) < b.r * b.r) return 'balloon';              // envelope
@@ -269,21 +273,34 @@ export function flyBot(p, planes, now, dt) {
   const L = BOT_LEVELS[botSettings.level] || BOT_LEVELS[1];
   if (p.ai && p.ai.level !== botSettings.level) p.ai = null;            // difficulty changed: re-roll this pilot
   const ai = p.ai ??= { level: botSettings.level, skill: L.skill[0] + Math.random() * (L.skill[1] - L.skill[0]), patrol: new THREE.Vector3(), patrolAt: 0, jink: 0, aim: new THREE.Vector3() };
-  // nearest living enemy
-  let target = null, best = 650;
-  for (const o of planes.values()) if (o.alive && !o.dying && o.team !== p.team) { const d = o.pos.distanceTo(p.pos); if (d < best) { best = d; target = o; } }
+  // the mode's orders for this bot, if any: { engage: range for dogfighting, guard: { pos, r } enemies near it are
+  // fair game too, leash: { pos, r } don't chase further than this from it, attack: an airship to strafe,
+  // aimed(): whether the guns bear on it, goal: a point to fly to, low: a low run (less terrain clearance) }
+  const obj = hooks.objective ? hooks.objective(p) : null, engage = obj ? obj.engage : 650;
+  // nearest living enemy worth engaging
+  let target = null, best = 1e9;
+  for (const o of planes.values()) {
+    if (!o.alive || o.dying || o.team === p.team) continue;
+    const d = o.pos.distanceTo(p.pos);
+    if ((d < engage || (obj?.guard && d < 900 && o.pos.distanceTo(obj.guard.pos) < obj.guard.r)) && d < best) { best = d; target = o; }
+  }
+  // on a leash: a bot with a job breaks off a chase that has dragged it too far from the job, unless the enemy is close
+  if (target && obj?.leash && best > 70 && Math.hypot(p.pos.x - obj.leash.pos.x, p.pos.z - obj.leash.pos.z) > obj.leash.r) target = null;
   const goal = v1;
   p.firing = false;
+  const fire = () => { if (now > (ai.burstEnd || 0) + L.pause) ai.burstEnd = now + L.burst * (0.6 + Math.random() * 0.8); p.firing = now < ai.burstEnd; };
   if (target) {
     goal.copy(target.pos).addScaledVector(target.fwd, target.speed * best / GUN.speed * L.lead);   // aim ahead of the target
     goal.addScaledVector(ai.aim, best * L.spread * (1.4 - Math.min(1, ai.skill)));
     if (now > ai.jink) { ai.jink = now + 0.6 + Math.random(); ai.aim.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5); }
     goal.sub(p.pos).normalize();
     if (best < 28) goal.y += 0.5;                                    // don't ram
-    if (best < L.range && goal.dot(p.fwd) > L.cone && now > p.gunAt - 1) {
-      if (now > (ai.burstEnd || 0) + L.pause) ai.burstEnd = now + L.burst * (0.6 + Math.random() * 0.8);      // start a new burst
-      p.firing = now < ai.burstEnd;
-    }
+    if (best < L.range && goal.dot(p.fwd) > L.cone && now > p.gunAt - 1) fire();
+  } else if (obj?.attack) {                                         // strafing run on an airship: aim at the hull and fire when lined up
+    goal.copy(obj.attack.pos).sub(p.pos); const d = goal.length(); goal.divideScalar(d || 1);
+    if (obj.aimed ? obj.aimed() : d < 300 && goal.dot(p.fwd) > 0.98) p.firing = true;           // a big target: hold the trigger while the guns bear on it
+  } else if (obj?.goal) {
+    goal.copy(obj.goal).sub(p.pos).normalize();
   } else {
     if (now > ai.patrolAt || ai.patrol.distanceTo(p.pos) < 60) { ai.patrolAt = now + 25; ai.patrol.set((Math.random() - 0.5) * 500, 150 + Math.random() * 120, (Math.random() - 0.5) * 800); }
     goal.copy(ai.patrol).sub(p.pos).normalize();
@@ -297,14 +314,17 @@ export function flyBot(p, planes, now, dt) {
     const closing = v3.copy(p.fwd).multiplyScalar(p.speed).addScaledVector(o.fwd, -o.speed).dot(v2);
     if (dist < 16 || (closing > 0 && dist / closing < 1.3)) { goal.copy(v2).negate(); goal.y += p.id < o.id ? 0.9 : -0.5; goal.normalize(); p.firing = p.firing && dist > 40; break; }
   }
+  // pull up or dive under an airship rather than fly into it
+  const esc = hooks.avoid ? hooks.avoid(p) : null; if (esc) goal.copy(esc);
   // give the observation balloons and their cables a wide berth
   for (const b of BALLOONS) { const dx = p.pos.x - b.x, dz = p.pos.z - b.z, d2 = dx * dx + dz * dz; if (d2 < 45 * 45 && p.pos.y < b.y + 30) { const d = Math.sqrt(d2) || 1; goal.x += dx / d * 1.8; goal.z += dz / d * 1.8; } }
   // stay inside the map, below the ceiling, and off the mountains
   if (Math.abs(p.pos.x) > HALF_X - 20 || Math.abs(p.pos.z) > HALF - 20) goal.set(-p.pos.x, 0.1, -p.pos.z).normalize();
   if (p.pos.y > CEILING - 60) goal.y = Math.min(goal.y, -0.15);
-  for (const look of [1.2, 2.8]) {
+  // terrain: look ahead and climb if the ground would come too close; a low capture run looks less far and accepts less clearance
+  for (const look of obj?.low ? [1.2] : [1.2, 2.8]) {
     v2.copy(p.pos).addScaledVector(p.fwd, p.speed * look);
-    if (v2.y < H(v2.x, v2.z) + 38) { goal.set(p.fwd.x * 0.6, 1, p.fwd.z * 0.6); break; }
+    if (v2.y < H(v2.x, v2.z) + (obj?.low ? 24 : 38)) { goal.set(p.fwd.x * 0.6, 1, p.fwd.z * 0.6); break; }
   }
   if (p.pos.y < H(p.pos.x, p.pos.z) + 30) goal.y = Math.max(goal.y, 0.7);
   goal.normalize();
