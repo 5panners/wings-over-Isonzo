@@ -1,5 +1,5 @@
 // Sound with Web Audio: a recorded engine loop, plus synthesised wind, guns, hits and explosions.
-let ctx = null, master, eng, wind, noise, muted = false, loopBuf = null, rainNodes = null;
+let ctx = null, master, eng, wind, noise, muted = false, loopBuf = null, rainNodes = null, gustNode = null;
 
 // One volume per kind of sound. 100% is the designed level; each can go from silent to double.
 export const CHANNELS = [
@@ -8,6 +8,7 @@ export const CHANNELS = [
   { key: 'flyby', label: 'Other aircraft', hint: 'Engines of nearby aircraft, with the Doppler pitch drop as they pass' },
   { key: 'wind', label: 'Wind', hint: 'Air noise that builds with speed' },
   { key: 'rain', label: 'Rain', hint: 'Rain on the aircraft, louder in a heavy storm' },
+  { key: 'gusts', label: 'Storm wind', hint: 'The howl and gusts of wind in rain and storms' },
   { key: 'thunder', label: 'Thunder', hint: 'Thunder rolling in after the lightning, later the further away the strike' },
   { key: 'guns', label: 'Guns', hint: 'Your guns and everyone else\'s' },
   { key: 'jingle', label: 'Capture jingles', hint: 'The fanfare when your side takes the point, and the sad phrase when it is lost' },
@@ -62,6 +63,11 @@ export function startSound() {
   src.buffer = noise; src.loop = true; bp.type = 'bandpass'; bp.Q.value = 0.6; wg.gain.value = 0;
   src.connect(bp); bp.connect(wg); wg.connect(bus.wind); src.start();
   wind = { bp, g: wg };
+  // storm wind: band-passed noise whose pitch and loudness are swept by two slow oscillators, so it howls and gusts
+  { const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain(), lfo = ctx.createOscillator(), lfo2 = ctx.createOscillator(), fd = ctx.createGain(), gd = ctx.createGain(), swell = ctx.createGain();
+    s.buffer = noise; s.loop = true; f.type = 'bandpass'; f.frequency.value = 420; f.Q.value = 2.2; g.gain.value = 0; swell.gain.value = 0;
+    lfo.frequency.value = 0.13; fd.gain.value = 170; lfo.connect(fd); fd.connect(f.frequency); lfo2.frequency.value = 0.31; gd.gain.value = 0.5; lfo2.connect(gd); gd.connect(swell.gain);
+    s.connect(f); f.connect(g); g.connect(swell); swell.connect(bus.gusts); s.start(0, 0.4); lfo.start(); lfo2.start(); gustNode = g; }
   // rain: two offset loops of band-passed noise, a hiss with a patter on top
   rainNodes = [[2800, 0.4, 0.3], [900, 0.7, 1.1]].map(([f, q, off]) => { const s = ctx.createBufferSource(), flt = ctx.createBiquadFilter(), g = ctx.createGain(); s.buffer = noise; s.loop = true; flt.type = 'bandpass'; flt.frequency.value = f; flt.Q.value = q; g.gain.value = 0; s.connect(flt); flt.connect(g); g.connect(bus.rain); s.start(0, off); return g; });
 }
@@ -204,6 +210,8 @@ export function setRain(level) {
   if (!ctx || !rainNodes) return; const t = ctx.currentTime;
   rainNodes[0].gain.setTargetAtTime(level * (0.05 + 0.2 * level), t, 0.4); rainNodes[1].gain.setTargetAtTime(level * level * 0.28, t, 0.4);
 }
+// Storm wind, level 0..1 (called every frame).
+export function setGusts(level) { if (ctx && gustNode) gustNode.gain.setTargetAtTime(level * 0.55, ctx.currentTime, 0.6); }
 // Thunder after a delay (seconds): near strikes open with a sharp crack, every strike ends in a long rolling rumble that gets duller with distance.
 export function thunderSound(dist, delay = 0) {
   if (!ctx) return; const v = Math.max(0.14, 1 / (1 + (dist / 700) * (dist / 700))), d = Math.max(0, delay);
@@ -226,6 +234,7 @@ export function previewSound(key) {
   else if (key === 'cannons') { cannonSound(0); later(() => crumpSound(20), 900); later(() => cannonSound(0), 1700); }
   else if (key === 'jingle') { captureJingle(); later(lostJingle, 3600); }
   else if (key === 'rain' && rainNodes) { const t = ctx.currentTime; for (const [g, a] of [[rainNodes[0], 0.3], [rainNodes[1], 0.28]]) { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(a, t + 0.7); g.gain.setValueAtTime(a, t + 2.0); g.gain.linearRampToValueAtTime(0, t + 3.0); } }
+  else if (key === 'gusts' && gustNode) { const t = ctx.currentTime; gustNode.gain.cancelScheduledValues(t); gustNode.gain.setValueAtTime(0, t); gustNode.gain.linearRampToValueAtTime(0.5, t + 1.2); gustNode.gain.setValueAtTime(0.5, t + 2.6); gustNode.gain.linearRampToValueAtTime(0, t + 4.2); }
   else if (key === 'thunder') { thunderSound(150, 0); later(() => thunderSound(900, 0.3), 3800); }
   else if (key === 'hits') { hitTakenSound(); later(hitScoredSound, 350); later(hitTakenSound, 700); }
   else if (key === 'booms') boomSound(120);

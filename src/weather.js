@@ -151,7 +151,7 @@ export function createWeather(scene, { sky, camera, clouds, fx }) {
         rainU.uLight.value.set(0.62, 0.68, 0.78).multiplyScalar(0.45 + 0.55 * (1 - sky.dark * 0.6) * (1 - sky.cover * 0.3) * (0.35 + 0.65 * (1 - (sky.night || 0))));
         rg.setDrawRange(0, Math.floor(N_RAIN * Math.min(1, 0.25 + cur.rain)) * 2);
       }
-      fx.rain(cur.rain);
+      fx.rain(cur.rain); fx.gusts(Math.min(1, cur.storm * 0.85 + cur.rain * 0.3));
       // lightning: only when the storm is well established
       const now = performance.now() / 1000;
       if (cur.storm > 0.55) { if (now > nextStrike) { strike(); nextStrike = now + rand(2.2, 8.5) * (1.5 - 0.5 * cur.storm); } }

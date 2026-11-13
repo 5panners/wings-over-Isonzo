@@ -102,7 +102,7 @@ Pick the weather on the Game tab (and change it in flight, as host): **Fair**, *
 - **Look:** cloud cover dims the sun, greys the sky and haze, and builds a dark cloud deck. Rain streaks lean the way you are flying through them, and rain and storms close the view in. The wind in the flags and windsocks strengthens.
 - **Thunderstorm:** lightning bolts and sheet lightning flash the whole sky and light the ground where they strike. Thunder follows each strike, later the further away it is, with a sharp crack from near ones. Strikes are cosmetic and cannot hit you.
 - **Turbulence:** rain and storms shake your aircraft. The Flight tab has a Turbulence slider (off to 200%).
-- **Sound:** Rain and Thunder each have a slider and Test button on the Audio tab.
+- **Sound:** Rain, Thunder and Storm wind each have a slider and Test button on the Audio tab.
 - **Shared battles:** the host's weather applies to everyone. Each player's own lightning and wind are random, so strikes differ between players.
 
 ### Nav lights and jingles

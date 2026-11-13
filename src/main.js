@@ -9,7 +9,7 @@ import { updateFlags } from './flags.js';
 import { createWeather, WEATHER } from './weather.js';
 import { createFront, POINT, CELLS, CELL_HP, SIDE_NAME, NATION, TEAM_TINT, SHIP_LEN } from './front.js';
 import { connect } from './net.js';
-import { startSound, updateSound, updateOthers, toggleMute, setMuted, isMuted, CHANNELS, getVolume, setVolume, resetVolumes, previewSound, setRain, thunderSound, gunSound, cannonSound, crumpSound, captureJingle, lostJingle, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
+import { startSound, updateSound, updateOthers, toggleMute, setMuted, isMuted, CHANNELS, getVolume, setVolume, resetVolumes, previewSound, setRain, setGusts, thunderSound, gunSound, cannonSound, crumpSound, captureJingle, lostJingle, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
 import { pollGamepad, updateControls, initControls, toggleControls, controlsOpen } from './gamepad.js';
 
 const MAX_PER_TEAM = 6, SCORE_LIMIT = 30, RESPAWN = 5, SEND_HZ = 15;
@@ -31,7 +31,7 @@ const camera = new THREE.PerspectiveCamera(62, 1, 1, 12000);
 const { sun, hemi, updateWater, clouds } = buildTerrain(scene);
 const sky = createDayNight(scene, { sun, hemi });   // sky.tod = hour of day, sky.rate = clock speed
 // weather: fair / overcast / rain / thunderstorm (or changeable); see weather.js
-const weather = createWeather(scene, { sky, camera, clouds, fx: { light: (p, peak, life, range) => flashLight(p, peak, life, range, 2, '#cfe0ff'), thunder: (d, delay) => thunderSound(d, delay), rain: l => setRain(l) } });
+const weather = createWeather(scene, { sky, camera, clouds, fx: { light: (p, peak, life, range) => flashLight(p, peak, life, range, 2, '#cfe0ff'), thunder: (d, delay) => thunderSound(d, delay), rain: l => setRain(l), gusts: l => setGusts(l) } });
 buildObjects(scene).setMode({ map: false, rings: false, flights: [], lineup: false });
 { const s = sun.shadow.camera; s.near = 100; s.far = 4500; }   // its width is set every frame by sky.update
 const hud = $('hud'), ctx = hud.getContext('2d');
