@@ -73,6 +73,8 @@ Pick the mode on the Game tab. In multiplayer the host's mode applies to everyon
 
 Gamepads, joysticks, throttles and rudder pedals work alongside the keyboard. The start screen is the first tab of **Options** (Game, Controls, Flight, Graphics, Audio); press `Esc` in flight to reopen the others; controller settings are on the Controls tab.
 
+The Game tab stays available in flight: press `Esc`, open the Game tab, change the mode, bots, pilots per side, start time, clock or start position, and press **Apply changes**. A new mode or number of pilots starts a fresh round; the rest take effect at once. Callsign, password, side and relay are fixed for the session. In a shared battle only the host can change the battle itself; everyone can change where they start from.
+
 - **Assign:** press Assign next to an action, then move that control (or press that button). Each binding remembers its device, so a stick, a throttle and pedals can be mixed.
 - **Standard layout:** an Xbox / PlayStation style pad is set up automatically — left stick pitch and roll, right stick rudder and throttle, right trigger fires.
 - **Lever:** tick "lever" on the throttle axis when it is a real throttle lever, so its position sets the throttle directly.

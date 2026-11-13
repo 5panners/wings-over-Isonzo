@@ -45,6 +45,7 @@
   #tab-game label { display: block; font-weight: 600; font-size: 13px; margin: 12px 0 4px; white-space: normal; }
   #tab-game .row label { margin-top: 12px; }
   #tab-game p { margin: 0 0 6px; color: #3a362c; font-size: 14.5px; }
+  #tab-game input:disabled, #tab-game select:disabled { opacity: .55; cursor: not-allowed; }
   #tab-game #go { display: block; width: 100%; margin-top: 18px; padding: 12px; background: #1d1b16; color: #efe6cf; border: 0; font: 700 16px Inter, system-ui, sans-serif; }
   #tab-game #go:disabled { opacity: .6; cursor: wait; }
   #controls h2 { font: 700 26px Georgia, serif; margin: 0 0 8px; }
@@ -94,7 +95,7 @@
 <body>
 <canvas id="c"></canvas>
 <canvas id="hud"></canvas>
-<div id="build" aria-label="Build number">Build 47</div>
+<div id="build" aria-label="Build number">Build 48</div>
 <div id="ui">
   <div id="score" class="panel"></div>
   <div id="stats" class="panel"></div>

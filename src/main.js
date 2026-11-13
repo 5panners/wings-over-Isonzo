@@ -218,7 +218,7 @@ function manageBots() {
 
 // ---------------- input ----------------
 const keys = new Set(); let mouseFire = false;
-addEventListener('keydown', e => { if (e.code === 'Escape' && running) return toggleControls(); if (controlsOpen()) return; startSound(); if (running && (e.code === 'Comma' || e.code === 'Period')) { setCamEase(camEase + (e.code === 'Period' ? 0.1 : -0.1)); say(`Camera smoothing ${Math.round(camEase * 100)}%`); } if (e.code === 'KeyM' && running) { say(toggleMute() ? 'Sound off' : 'Sound on'); $('aud-mute').checked = isMuted(); }
+addEventListener('keydown', e => { if (e.code === 'Escape' && running) { toggleControls(); if (controlsOpen()) showLiveSetup(); return; } if (controlsOpen()) return; startSound(); if (running && (e.code === 'Comma' || e.code === 'Period')) { setCamEase(camEase + (e.code === 'Period' ? 0.1 : -0.1)); say(`Camera smoothing ${Math.round(camEase * 100)}%`); } if (e.code === 'KeyM' && running) { say(toggleMute() ? 'Sound off' : 'Sound on'); $('aud-mute').checked = isMuted(); }
   if (running && (e.code === 'BracketLeft' || e.code === 'BracketRight')) { if (isHost()) { sky.tod = (sky.tod + (e.code === 'BracketRight' ? 1 : 23)) % 24; say('Time set to ' + sky.clock()); } else say('Only the host can change the time'); }
   keys.add(e.code); if (running && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); });
 addEventListener('keyup', e => keys.delete(e.code));
@@ -587,17 +587,62 @@ async function start() {
     me = addPlane(net?.id || 'solo', name, team, TEAM_TYPE[team], net?.id || 'solo', false);
     me.spawn(now(), onRunway); camera.position.copy(me.pos).addScaledVector(me.fwd, -20);
     if (onRunway) say('On the runway: open the throttle, then ease the stick back to lift off');
-    sky.clock(); running = true; toggleControls(false); document.querySelector('[data-tab=game]').hidden = true; $('opt-title').textContent = 'Options'; showTab('controls'); $('ui').style.display = 'block'; window.__woi.me = me; window.__woi.net = net;
+    sky.clock(); running = true; toggleControls(false); enterLiveSetup(); showTab('controls'); $('ui').style.display = 'block'; window.__woi.me = me; window.__woi.net = net;
   } catch (err) { net?.close(); net = null; for (const p of [...planes.values()]) removePlane(p); $('status').textContent = err.message || String(err); $('go').disabled = false; }
 }
 initControls();
 setCamEase(camEase);
 $('camease').addEventListener('input', e => setCamEase(e.target.value / 100));
 // the start screen is the Options dialog's first tab; it stays open until the game begins
+// ---- the Game tab while flying: change the setup without a restart ----
+// Callsign, password, side and relay belong to the connection, so they are locked. In a shared battle only the host
+// can change the battle itself (mode, bots, pilots per side, time, clock); everybody can change where they start from.
+let applied = {};
+const HOST_FIELDS = ['mode', 'size', 'bots', 'time', 'clock'], LOCKED_FIELDS = ['name', 'pw', 'team', 'relay'];
+function currentSetup() { return { mode, size: String(teamSize), bots: String(botSettings.level), startpos: onRunway ? 'runway' : 'air', time: String(Math.round(sky.tod * 100) / 100), clock: String(sky.rate) }; }
+function showLiveSetup() {                                                 // fill the form from what is actually happening now
+  if (!running) return;
+  const cur = currentSetup(); applied = { ...cur };
+  const pick = (id, v) => { const el = $(id), want = String(v); if ([...el.options].some(o => o.value === want)) el.value = want; };
+  pick('mode', cur.mode); pick('size', cur.size); pick('bots', cur.bots); pick('startpos', cur.startpos); pick('clock', cur.clock);
+  const near = [...$('time').options].map(o => +o.value).sort((a, b) => Math.abs(a - sky.tod) - Math.abs(b - sky.tod))[0];
+  $('time').dataset.shown = near; pick('time', near);                      // the menu only has a few hours; "applied" remembers it so an untouched menu changes nothing
+  applied.time = String(near);
+  const host = isHost();
+  for (const id of HOST_FIELDS) $(id).disabled = !host;
+  $('status').textContent = host ? '' : 'Only the host can change the battle; you can change where you start from.';
+}
+function enterLiveSetup() {
+  for (const id of LOCKED_FIELDS) $(id).disabled = true;
+  $('go').textContent = 'Apply changes'; $('go').disabled = false;
+  $('opt-title').textContent = 'Wings over Isonzo'; document.querySelector('#tab-game > form > p').textContent = 'The battle is under way. Change the setup and press Apply: a new mode or number of pilots restarts the round, the rest take effect straight away.';
+  showLiveSetup();
+}
+function applyLiveSetup() {
+  const f = { mode: $('mode').value, size: $('size').value, bots: $('bots').value, startpos: $('startpos').value, time: $('time').value, clock: $('clock').value }, host = isHost(), changes = [];
+  if (f.startpos !== applied.startpos) { onRunway = f.startpos === 'runway'; changes.push(onRunway ? 'you start on the runway' : 'you start in the air'); }
+  if (host) {
+    const restart = f.mode !== applied.mode || f.size !== applied.size;
+    if (f.bots !== applied.bots) { botSettings.level = THREE.MathUtils.clamp(+f.bots | 0, -1, BOT_LEVELS.length - 1); changes.push('bots: ' + $('bots').selectedOptions[0].textContent.split(' — ')[0].toLowerCase()); }
+    if (f.time !== applied.time) { sky.tod = +f.time; changes.push('time ' + sky.clock()); }
+    if (f.clock !== applied.clock) { sky.rate = +f.clock; changes.push('clock ' + $('clock').selectedOptions[0].textContent.toLowerCase()); }
+    if (f.size !== applied.size) { teamSize = THREE.MathUtils.clamp(+f.size || 1, 1, MAX_PER_TEAM); changes.push(`${teamSize} per side`); }
+    if (f.mode !== applied.mode) { setMode(f.mode); changes.push(f.mode === 'front' ? 'Zeppelin Front' : 'Dogfight'); }
+    if (restart) {                                                           // a fresh round: scores and objectives reset, everybody respawns
+      score.it = score.ah = 0; roundEndAt = 0; if (mode === 'front') front.reset();
+      for (const p of planes.values()) if (p.local) { p.alive = false; p.dying = false; p.respawnAt = now() + 0.8; }
+      nextBotCheck = 0;
+    }
+  }
+  applied = { ...applied, ...f };
+  say(changes.length ? 'Setup changed: ' + changes.join(', ') : 'No changes');
+  toggleControls(false);
+}
 function showTab(name) {
   for (const t of document.querySelectorAll('#controls .tabs button')) t.classList.toggle('on', t.dataset.tab === name);
   for (const n of ['game', 'controls', 'flight', 'graphics', 'audio']) $('tab-' + n).hidden = n !== name;
   if (name === 'audio') startSound();
+  if (name === 'game') showLiveSetup();
 }
 const closeOptions = () => { if (running) toggleControls(false); else showTab('game'); };       // before take-off "Done" returns to the Game tab
 $('controls').addEventListener('close-request', closeOptions);
@@ -658,7 +703,7 @@ $('aud-reset').addEventListener('click', () => { resetVolumes(); setMuted(false)
 $('aud-close').addEventListener('click', () => closeOptions());
 showVolumes();
 applyGfx(false);
-$('form').addEventListener('submit', e => { e.preventDefault(); start(); });
+$('form').addEventListener('submit', e => { e.preventDefault(); if (running) applyLiveSetup(); else start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
 window.__woi = { shellStats, LIGHTS, front, get mode() { return mode; }, setMode, flight, shadowExtent: () => sun.shadow.camera.right, gfx, renderer, explode, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
 frame();
