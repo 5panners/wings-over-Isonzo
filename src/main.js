@@ -48,7 +48,7 @@ camera.position.set(-470, 300, 900); camera.lookAt(0, 40, -100);
 const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), V2 = new THREE.Vector3(), S3 = new THREE.Vector3(), Zax = new THREE.Vector3(0, 0, 1), COL = new THREE.Color();
 const bullets = [], puffs = [];
 const tracerMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.16, 0.16, 4), new THREE.MeshBasicMaterial({ color: '#ffe27a', fog: false }), 500);
-const puffMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ flatShading: true }), 400);
+const puffMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ flatShading: true, transparent: true, opacity: 0.55, depthWrite: false }), 400);
 // glowing puffs (fireballs) are unlit so they stay bright at night
 const glowMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshBasicMaterial({ fog: false }), 120);
 for (const m of [tracerMesh, puffMesh, glowMesh]) { m.frustumCulled = false; m.count = 0; scene.add(m); }
@@ -414,10 +414,10 @@ let lastHitLight = 0; const hitStats = { total: 0, mine: 0, lit: 0, lastPos: nul
 function hitBurst(pos, mine, t) {
   hitStats.total++; if (mine) hitStats.mine++; hitStats.lastPos = pos.toArray();
   const n = mine ? 5 : 3;
-  for (let i = 0; i < n; i++) puff(pos, i < 2 ? '#fff4c0' : i < 4 ? '#ffb040' : '#ff7a28', (mine ? 1.2 : 0.9) + Math.random() * 1.3, 0.1 + Math.random() * 0.14, 1.5, 1.6).glow = true;      // fireball
-  for (let i = 0; i < 3; i++) puff(pos, '#ffe8a0', 0.25 + Math.random() * 0.25, 0.18 + Math.random() * 0.2, -9 - Math.random() * 6, 3.2).glow = true;                                    // sparks that fall away
-  puff(pos, '#3a3633', 1 + Math.random(), 0.5 + Math.random() * 0.5, 2.5, 1.5);                                                                                                     // smoke
-  if (t - lastHitLight > (mine ? 0.05 : 0.2)) { lastHitLight = t; hitStats.lit++; flashLight(pos, mine ? 240 : 120, 0.14, 34, 1, '#ffc27a'); }
+  for (let i = 0; i < n; i++) puff(pos, i < 2 ? '#fff4c0' : i < 4 ? '#ffb040' : '#ff7a28', (mine ? 0.6 : 0.45) + Math.random() * 0.6, 0.08 + Math.random() * 0.1, 1.2, 1.0).glow = true;      // fireball
+  for (let i = 0; i < 3; i++) puff(pos, '#ffe8a0', 0.15 + Math.random() * 0.15, 0.15 + Math.random() * 0.15, -9 - Math.random() * 6, 2).glow = true;                                    // sparks that fall away
+  puff(pos, '#3a3633', 0.6 + Math.random() * 0.5, 0.5 + Math.random() * 0.5, 2.5, 1.0);                                                                                                     // smoke
+  if (t - lastHitLight > (mine ? 0.05 : 0.2)) { lastHitLight = t; hitStats.lit++; flashLight(pos, mine ? 150 : 80, 0.12, 26, 1, '#ffc27a'); }
 }
 // ---- rockets (Le Prieur): eight on the struts, loaded by flying through the pickup; R fires one ----
 const ROCKET = { speed: 175, life: 1.6, dmg: 40, airDmg: 170, r: 5 };          // a hit does 40 to an aircraft and 170 to an airship gas cell (which holds 320)
