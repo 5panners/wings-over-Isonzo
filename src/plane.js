@@ -127,7 +127,7 @@ export function takeHit(p, amount, where, scale = 1) {   // scale: 1 / toughness
   p.hp -= amount * scale;
   if (where === 'pilot') { p.hp -= 8 * scale; msgs.push('Pilot wounded'); return msgs; }
   if (where === 'body') return msgs;
-  const a = ZONE_HIT[where] * scale * (0.7 + Math.random() * 0.6), was = D[where]; D[where] = Math.min(1, was + a);
+  const a = ZONE_HIT[where] * scale * Math.sqrt(Math.max(1, amount / 3)) * (0.7 + Math.random() * 0.6), was = D[where]; D[where] = Math.min(1, was + a);
   if (was <= 0.3 && D[where] > 0.3) msgs.push(ZONE_TEXT[where][1]); else if (was <= 0.75 && D[where] > 0.75) msgs.push(ZONE_TEXT[where][2]);
   if (where === 'eng') {
     if (was < 1 && D.eng >= 1) msgs.push('Engine seized: no power');

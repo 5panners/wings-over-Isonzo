@@ -89,6 +89,16 @@ Aircraft in view carry a marker with name and distance: a diamond for enemies, a
 
 Each side flies its own flag, built from flat-coloured cells (no textures): Italy's tricolore with the crowned Savoy shield, and the Austro-Hungarian imperial war ensign, red-white-red with the Austrian and Hungarian arms under a crown (simplified to fit the grid). They are on the airfield flagpoles, and the capture point flies the flag of whoever holds it, or plain white if nobody does. The flags wave in a wind that drifts slowly and gusts, and the airfield windsocks stream downwind and droop when it is light. The wind is cosmetic and does not affect flight.
 
+### Nav lights and jingles
+
+At night the airfield runways light up: orange lamps along both edges, green across the threshold where the take-off run starts and red at the far end, with a flashing beacon on a mast (Italy once every four seconds, Austria-Hungary twice). They come on through the dusk and flicker a little like flames.
+
+In Zeppelin Front a short brass fanfare plays when your side takes Gradisca, and a slow, falling phrase when it is lost to the enemy. Both have a slider, and a Test button that plays both, on the Audio tab.
+
+### Airship cannons
+
+The airship guns are heavy cannons: slower to fire (one shell about every 0.85 seconds, alternating barrels), with a big kick-back and a large muzzle flash, and a deep blast with a rolling rumble. A shell bursts in a puff of flak at the end of its flight or when it hits, and a hit does much more damage than a machine gun's, so one or two can cripple a system. They have their own volume slider on the Audio tab.
+
 ### Lit windows
 
 Every house has windows. By day they are dark glass; at night about three quarters of the houses have lit rooms, which come on one by one through the dusk (in warm yellows and oranges), and about half of the houses go dark again late in the evening, between about 22:30 and 04:30. All the windows are drawn as a single instanced mesh, so they cost almost nothing.

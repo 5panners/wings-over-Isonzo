@@ -2,13 +2,13 @@
 import * as THREE from 'three';
 import { buildTerrain } from './terrain.js';
 import { createDayNight } from './daynight.js';
-import { buildObjects, updateWindows } from './objects.js';
+import { buildObjects, updateWindows, updateNavLights } from './objects.js';
 import { AIRFIELDS, SECTORS, riverX, HALF, HALF_X, H, coastZ, coastW, coastE } from './world.js';
 import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, BOT_LEVELS, botSettings, COLLIDE_RADIUS, overOwnField, flight, setFlight, FLIGHT_DEFAULT, ZONE_TEXT, zoneAt, takeHit, systems, startDying, flyPlayer, flyBot, flyRemote, hooks } from './plane.js';
 import { updateFlags } from './flags.js';
 import { createFront, POINT, CELLS, CELL_HP, SIDE_NAME, NATION, TEAM_TINT, SHIP_LEN } from './front.js';
 import { connect } from './net.js';
-import { startSound, updateSound, updateOthers, toggleMute, setMuted, isMuted, CHANNELS, getVolume, setVolume, resetVolumes, previewSound, gunSound, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
+import { startSound, updateSound, updateOthers, toggleMute, setMuted, isMuted, CHANNELS, getVolume, setVolume, resetVolumes, previewSound, gunSound, cannonSound, crumpSound, captureJingle, lostJingle, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
 import { pollGamepad, updateControls, initControls, toggleControls, controlsOpen } from './gamepad.js';
 
 const MAX_PER_TEAM = 6, SCORE_LIMIT = 30, RESPAWN = 5, SEND_HZ = 15;
@@ -79,10 +79,11 @@ function explode(pos) {
 
 // ---------------- Zeppelin Front ----------------
 const front = createFront(scene, {
+  jingle: won => (won ? captureJingle() : lostJingle()),
   puff, explode, say: t => say(t), label: id => label(id), light: (p, power) => muzzleLight(p, power),
-  shoot(origin, dir, side, real) {                     // airship gunners: real rounds on the host, tracers everywhere else
-    bullets.push({ p: origin.clone(), v: dir.clone().multiplyScalar(GUN.speed), life: GUN.life, by: 'air-' + side, team: side, real });
-    gunSound(origin.distanceTo(camera.position), false);
+  shoot(origin, dir, side, real, spec) {               // airship gunners: real shells on the host, tracers everywhere else
+    bullets.push({ p: origin.clone(), v: dir.clone().multiplyScalar(spec.speed), life: spec.life, by: 'air-' + side, team: side, real, shell: true, dmg: spec.dmg, r: spec.r });
+    cannonSound(origin.distanceTo(camera.position));
   },
 });
 const ROLES = ['capture', 'attack', 'hunt', 'escort'];      // bot n on each side takes ROLES[n % 4]
@@ -192,7 +193,7 @@ function onMessage(m, from) {
       if (m.d) { sky.rate = +m.d[1] || 0; const off = Math.abs(sky.tod - m.d[0]); if (Math.min(off, 24 - off) > 0.03) sky.tod = +m.d[0] || 0; }   // the host's clock is everyone's clock
     }
   } else if (m.t === 'x') {                                   // someone's bullet hit a plane we own
-    const p = planes.get(m.to); if (p && p.local) damage(p, Math.min(+m.d || 0, 25), m.by, ['eng', 'wingL', 'wingR', 'tail', 'fuel', 'pilot', 'body'].includes(m.z) ? m.z : undefined);
+    const p = planes.get(m.to); if (p && p.local) damage(p, Math.min(+m.d || 0, 40), m.by, ['eng', 'wingL', 'wingR', 'tail', 'fuel', 'pilot', 'body'].includes(m.z) ? m.z : undefined);
   } else if (m.t === 'k') onKill(m.v, m.by, m.c);
   else if (m.t === 'zx' && isHost() && mode === 'front') front.damage(m.s, m.c | 0, Math.min(+m.d || 0, 25), m.by);   // a player's rounds struck an airship
 }
@@ -262,6 +263,7 @@ function frame() {
   updateEffects(dt);
   updateFlags(t, dt);
   updateWindows(sky.night, sky.tod);
+  updateNavLights(sky.night, t);
   updateWater(t, sun, hemi);
   updateCamera(dt);
   renderer.render(scene, camera);
@@ -315,11 +317,12 @@ function step(t, dt) {
       if (!p.alive || p.dying || p.team === b.team) continue;
       // closest approach of this frame's bullet segment to the plane
       V2.copy(p.pos).sub(b.p); const u = THREE.MathUtils.clamp(V2.dot(V) / V.lengthSq(), 0, 1);
-      if (V2.addScaledVector(V, -u).lengthSq() < GUN.hitRadius * GUN.hitRadius) {
+      const rad = b.r ?? GUN.hitRadius;
+      if (V2.addScaledVector(V, -u).lengthSq() < rad * rad) {
         hit = p;
         // where it struck: a point between where the round entered the aircraft's space and its closest pass,
         // in the aircraft's own frame, so shots from astern find the tail and head-on shots the engine
-        const back = Math.sqrt(Math.max(0, GUN.hitRadius * GUN.hitRadius - V2.lengthSq())) * Math.random();
+        const back = Math.sqrt(Math.max(0, rad * rad - V2.lengthSq())) * Math.random();
         V2.copy(b.p).addScaledVector(V, u).addScaledVector(S3.copy(V).normalize(), -back).sub(p.pos).applyQuaternion(Q.copy(p.quat).invert());
         where = zoneAt(V2.x, V2.z); break;
       }
@@ -338,10 +341,10 @@ function step(t, dt) {
     b.p.add(V);
     if (hit) {
       puff(hit.pos, '#ffd36b', 0.8, 0.25, 0, 2);
-      if (hit.local) damage(hit, GUN.damage, b.by, where); else net?.send({ t: 'x', to: hit.id, by: b.by, d: GUN.damage, z: where }, hit.owner);
+      if (hit.local) damage(hit, b.dmg ?? GUN.damage, b.by, where); else net?.send({ t: 'x', to: hit.id, by: b.by, d: b.dmg ?? GUN.damage, z: where }, hit.owner);
       if (b.by === me?.id) { hitFlash = t + 0.12; hitScoredSound(); }
     }
-    if (hit || b.life <= 0) bullets.splice(i, 1);
+    if (hit || b.life <= 0) { if (b.shell) shellBurst(b.p, !!hit); bullets.splice(i, 1); }
   }
   // round end: the host decides, everyone else follows the score it sends
   if (isHost()) {
@@ -369,6 +372,13 @@ function repair(p, t, dt) {
   p.repairing = t;
 }
 const BE = new THREE.Vector3();
+// a shell going off: a dark flak puff with a hot centre, bigger and brighter if it struck something
+function shellBurst(pos, struck) {
+  for (let i = 0; i < (struck ? 6 : 4); i++) puff(pos, i % 3 ? '#2d2a28' : '#55504a', 2 + Math.random() * 2.5, 1.2 + Math.random() * 1.4, 1.5, 5);
+  for (let i = 0; i < 3; i++) puff(pos, i ? '#ffb040' : '#fff2b0', 2 + Math.random() * 2, 0.18 + Math.random() * 0.15, 1, 3).glow = true;
+  const d = pos.distanceTo(camera.position); if (d < 260) crumpSound(d);
+  if (struck) flashLight(pos, 220, 0.12, 45, 1);
+}
 // the side that has won the round, or null
 function winner() {
   if (mode === 'front') return front.tickets.it <= 0 ? 'ah' : front.tickets.ah <= 0 ? 'it' : null;
@@ -377,7 +387,7 @@ function winner() {
 
 function updateEffects(dt) {
   let n = 0;
-  for (const b of bullets) { if (n >= 500) break; Q.setFromUnitVectors(Zax, V.copy(b.v).normalize()); tracerMesh.setMatrixAt(n++, M4.compose(b.p, Q, S3.set(1, 1, 1))); }
+  for (const b of bullets) { if (n >= 500) break; Q.setFromUnitVectors(Zax, V.copy(b.v).normalize()); const sc = b.shell ? 3 : 1; tracerMesh.setMatrixAt(n++, M4.compose(b.p, Q, S3.set(sc, sc, sc))); }
   tracerMesh.count = n; tracerMesh.instanceMatrix.needsUpdate = true;
   n = 0; let g = 0;
   for (let i = puffs.length - 1; i >= 0; i--) {

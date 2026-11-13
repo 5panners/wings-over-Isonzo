@@ -128,6 +128,39 @@ function addWindows(g, w, h, d) {
     }
   }
 }
+// ---- runway lights: low-poly lamps with a glow shell, in two instanced meshes for the whole map ----
+// Edge lamps burn orange like a flare path, the threshold where the take-off run starts is green, the far end red, and each
+// airfield has a flashing beacon: Italy flashes once every four seconds, Austria-Hungary twice.
+const NAV = [], navRand = (() => { let s = 1917; return () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296; })();
+const NAV_COL = { edge: new THREE.Color('#ffa840'), green: new THREE.Color('#3dff82'), red: new THREE.Color('#ff3b3b'), beacon: new THREE.Color('#fff4d6') };
+function addNav(g, x, y, z, kind, side = null) {
+  const s = kind === 'beacon' ? 2.2 : 1;
+  NAV.push({ g, m: new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion(), new THREE.Vector3(s, s, s)), kind, side, phase: navRand() * 4, col: NAV_COL[kind] });
+}
+let navLamps = null, navHalos = null, navOff = false;
+function buildNavLights(scene) {
+  scene.updateMatrixWorld(true);
+  navLamps = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.4, 0), new THREE.MeshBasicMaterial(), NAV.length);
+  navHalos = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.4, 0), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.34, depthWrite: false, blending: THREE.AdditiveBlending }), NAV.length);
+  const M = new THREE.Matrix4(); NAV.forEach((n, i) => { M.multiplyMatrices(n.g.matrixWorld, n.m); navLamps.setMatrixAt(i, M); navHalos.setMatrixAt(i, M); navLamps.setColorAt(i, NAV_LENS); navHalos.setColorAt(i, BLACK); });
+  for (const m of [navLamps, navHalos]) { m.frustumCulled = false; scene.add(m); } navHalos.renderOrder = 4;
+}
+const NAV_LENS = new THREE.Color('#3d4147'), BLACK = new THREE.Color(0, 0, 0), NC = new THREE.Color();
+const smooth01 = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+// night: 0 (day) .. 1 (dark); t: seconds. The lights come on through the dusk and flicker a little like flames.
+export function updateNavLights(night, t) {
+  if (!navLamps) return;
+  const k = smooth01(0.3, 0.75, night);
+  if (k <= 0) { if (navOff) return; navOff = true; } else navOff = false;                  // all dark by day: one pass to switch them off, then nothing
+  NAV.forEach((n, i) => {
+    let b = k;
+    if (n.kind === 'edge') b *= 0.86 + 0.14 * Math.sin(t * 9 + i * 1.7);
+    else if (n.kind === 'beacon') { const ph = (t + n.phase) % 4; b *= n.side === 'it' ? (ph < 0.22 ? 1 : 0) : (ph < 0.18 || (ph > 0.5 && ph < 0.68) ? 1 : 0); }
+    navLamps.setColorAt(i, NC.copy(NAV_LENS).lerp(n.col, b));
+    navHalos.setColorAt(i, NC.copy(n.col).multiplyScalar(b));
+  });
+  navLamps.instanceColor.needsUpdate = true; navHalos.instanceColor.needsUpdate = true;
+}
 let winMesh = null, winKey = -1;
 const GLASS_DAY = new THREE.Color('#56677a'), GLASS_NIGHT = new THREE.Color('#0d121a'), WARM = ['#ffc766', '#ffb347', '#ffe0a0'].map(c => new THREE.Color(c)), CC = new THREE.Color();
 function buildWindows(scene) {
@@ -224,6 +257,12 @@ export function buildObjects(scene) {
     if (key === 'it') for (const x of [44, 66]) { const c = CAPRONI(false); c.rotation.order = 'YXZ'; c.rotation.set(-0.1, 0.1, 0); c.position.set(x, 2.25, -11); g.add(c); }
     else for (const x of [40, 54, 68]) { const p = ALBATROS(false); p.rotation.order = 'YXZ'; p.rotation.set(-0.2, -0.3, 0); p.position.set(x, 1.38, -11); g.add(p); }
     ad(flag(key), -84, -24); ad(windsock(), 96, -6); ad(windsock(), -108, 34);
+    // runway lights: the strip runs along x, from z = -1 to 29; the take-off run starts at the green end
+    const startX = (key === 'it' ? -1 : 1) * 118;
+    for (let x = -115; x <= 115; x += 11.5) for (const z of [-1, 29]) addNav(g, x, 0.55, z, 'edge');
+    for (let z = -1; z <= 29.1; z += 5) { addNav(g, startX, 0.55, z, 'green'); addNav(g, -startX, 0.55, z, 'red'); }
+    ad(mk(Cy(0.12, 0.16, 9, 5), '#8a8d86', 0, 0, 0), -startX, -10, 0, 4.5);                            // beacon mast at the far end
+    addNav(g, -startX, 9.6, -10, 'beacon', key);
     for (let i = 0; i < 12; i++) ad(tent(key === 'it' ? '#e8e0c4' : '#d8d2b6'), -100 + (i % 6) * 5.5, -44 - Math.floor(i / 6) * 5.5);
     for (let i = 0; i < 3; i++) ad(truck(key === 'it' ? '#6c7758' : '#5c6656'), 82 + i * 5, -30, 0.2);
     for (let i = 0; i < 10; i++) ad(mk(Cy(0.5, 0.5, 1.2, 7), i % 3 ? '#8c3b2e' : '#55606a'), 76 + (i % 5) * 1.3, -22 - Math.floor(i / 5) * 1.3, 0, 0.6);
@@ -307,6 +346,7 @@ export function buildObjects(scene) {
   ['avorio', 'drachen', 'caquot'].forEach((ty, i) => { const b = balloon(ty); b.position.set(LU.x + (i - 1) * 27, LU.y, LU.z + (i - 1) * 4); b.rotation.y = -1.25; b.scale.setScalar(1.25); lineup.add(b); lineup.add(rod([b.position.x, LU.y - 13.5, b.position.z], [b.position.x + 4, LU.y - 80, b.position.z + 3], 0.08, '#3d3a34')); });
 
   buildWindows(scene);                                      // after every building has been placed
+  buildNavLights(scene);
   const KIND = { spad: SPAD, nieuport: NIEUPORT, hanriot: HANRIOT, albatros: ALBATROS, phonix: PHONIX, caproni: CAPRONI };
   return {
     LU,

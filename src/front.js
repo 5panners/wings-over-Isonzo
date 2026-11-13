@@ -20,6 +20,8 @@ export const radiusAt = s => (s <= 0 || s >= 1 ? 0 : R * Math.sqrt(1 - Math.pow(
 // gun positions in the hull frame (x, y, z) and which way they can fire: 1 = upper hemisphere, -1 = lower
 // pivot of each mount (x, y, z in the hull frame) and 1 = on top of the hull, -1 = slung under a gondola
 const TURRETS = [[0, radiusAt(0.72) + 1.9, L * 0.22, 1], [0, radiusAt(0.2) + 1.9, -L * 0.3, 1], [0, -R - 6.7, L * 0.22, -1], [0, -R - 6.7, -L * 0.18, -1]];
+// A shell: slower and heavier than a machine-gun round, with a bigger burst radius. Cannons fire one every FIRE_EVERY seconds, alternating barrels.
+export const SHELL = { speed: 205, life: 2.1, dmg: 24, r: 5 }, FIRE_EVERY = 0.85;
 const TURRET_RANGE = 320, AIM_ERROR = [0.06, 0.075, 0.048, 0.03];   // aim error by bot level + 1: no bots, rookie, regular, ace
 // patrol racetracks in front of each airfield, long axis north-south, about the same distance from Gradisca
 const PATROL = { it: { cx: -245, cz: 230, rx: 80, rz: 200, theta0: 0 }, ah: { cx: 225, cz: 215, rx: 80, rz: 200, theta0: Math.PI } };
@@ -175,7 +177,7 @@ export function createFront(scene, fx) {
           const attacking = p.firing && v2.copy(s.pos).sub(p.pos).normalize().dot(p.fwd) > 0.96, score = d - (attacking ? 100 : 0);
           if (score < bs) { bs = score; tgt = p; }
         }
-        if (tgt && now > t.burstEnd + 1.3) { t.burstEnd = now + 0.9 + Math.random() * 0.5; t.err.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(2 * err); }
+        if (tgt && now > t.burstEnd + 1.5) { t.burstEnd = now + 1.5 + Math.random() * 0.7; t.err.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(2 * err); }
         t.firing = !!tgt && now < t.burstEnd; t.target = t.firing ? tgt.id : null;
         aim = tgt;                                                            // the gunner keeps tracking between bursts
       } else {
@@ -186,23 +188,23 @@ export function createFront(scene, fx) {
       let wantYaw = 0, wantPitch = t.up * 0.35;
       if (aim && aim.alive) {
         const d = aim.pos.distanceTo(o);
-        v3.copy(aim.pos).addScaledVector(aim.fwd, aim.speed * d / GUN.speed).sub(o).applyQuaternion(s.inv).normalize();
+        v3.copy(aim.pos).addScaledVector(aim.fwd, aim.speed * d / SHELL.speed).sub(o).applyQuaternion(s.inv).normalize();
         wantYaw = Math.atan2(v3.x, v3.z); wantPitch = THREE.MathUtils.clamp(Math.asin(THREE.MathUtils.clamp(v3.y, -1, 1)), t.up > 0 ? -0.15 : -1.45, t.up > 0 ? 1.45 : 0.15);
       }
       const k = Math.min(1, 7 * dt);
       t.yaw = wrap(t.yaw + wrap(wantYaw - t.yaw) * k); t.pitch += (wantPitch - t.pitch) * k;
       mt.yawG.rotation.y = t.yaw; mt.pitchG.rotation.x = -t.pitch;
-      t.recoil *= Math.exp(-26 * dt); mt.recoilG.position.z = -0.16 * t.recoil;
+      t.recoil *= Math.exp(-6.5 * dt); mt.recoilG.position.z = -0.45 * t.recoil;                       // a heavy gun kicks back far and returns slowly
       mt.root.updateMatrixWorld(true);
       for (let k2 = 0; k2 < 2; k2++) mt.flashes[k2].visible = now < t.flashUntil[k2];
       if (!t.firing || !tgt || now < t.nextShot) continue;
-      t.nextShot = now + (host ? 0.12 : 0.14);
+      t.nextShot = now + FIRE_EVERY;
       const side = t.shot++ & 1, flash = mt.flashes[side], tip = flash.getWorldPosition(new THREE.Vector3());   // alternate barrels, rounds leave from the muzzle
       const d = tgt.pos.distanceTo(tip);
-      v2.copy(tgt.pos).addScaledVector(tgt.fwd, tgt.speed * d / GUN.speed).addScaledVector(t.err, d).sub(tip).normalize();
-      fx.shoot(tip, v2, s.side, host);
-      t.flashUntil[side] = now + 0.055; flash.visible = true; flash.rotation.z = Math.random() * 6.28; flash.scale.setScalar(1.3 + Math.random() * 0.7);
-      t.recoil = 1; fx.light(tip, 1.2);
+      v2.copy(tgt.pos).addScaledVector(tgt.fwd, tgt.speed * d / SHELL.speed).addScaledVector(t.err, d).sub(tip).normalize();
+      fx.shoot(tip, v2, s.side, host, SHELL);
+      t.flashUntil[side] = now + 0.1; flash.visible = true; flash.rotation.z = Math.random() * 6.28; flash.scale.setScalar(2.6 + Math.random() * 1.0);
+      t.recoil = 1; fx.light(tip, 2.4);
     }
   }
 
@@ -231,6 +233,7 @@ export function createFront(scene, fx) {
       s.seen.down = s.down; s.seen.hp = hp;
     }
     if (point.owner !== prevOwner.v) {
+      if (myTeam) { if (point.owner === myTeam) fx.jingle(true); else if (point.owner || prevOwner.v === myTeam) fx.jingle(false); }     // taken by us / taken by them or lost by us
       if (point.owner) fx.say(`<b style="color:${TEAM_TINT[point.owner]}">${NATION[point.owner]}</b> captured ${POINT.name}`);
       else if (prevOwner.v) fx.say(`${POINT.name} is neutral`);
       prevOwner.v = point.owner;

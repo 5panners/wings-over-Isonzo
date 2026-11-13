@@ -8,6 +8,8 @@ export const CHANNELS = [
   { key: 'flyby', label: 'Other aircraft', hint: 'Engines of nearby aircraft, with the Doppler pitch drop as they pass' },
   { key: 'wind', label: 'Wind', hint: 'Air noise that builds with speed' },
   { key: 'guns', label: 'Guns', hint: 'Your guns and everyone else\'s' },
+  { key: 'jingle', label: 'Capture jingles', hint: 'The fanfare when your side takes the point, and the sad phrase when it is lost' },
+  { key: 'cannons', label: 'Airship cannons', hint: 'The heavy guns on the airships, and their shells bursting' },
   { key: 'hits', label: 'Hits', hint: 'Rounds striking your aircraft, and your rounds striking home' },
   { key: 'booms', label: 'Explosions', hint: 'Crashes and aircraft blowing up' },
 ];
@@ -144,6 +146,55 @@ export function gunSound(dist, own) {
   burst(bus.guns, 0.07, 'bandpass', own ? 1500 : 1100, 500, 0.3 * v);
   tone(bus.guns, 0.06, 'square', own ? 150 : 120, 60, 0.14 * v);
 }
+// The airship cannons: a heavy slow gun. Layers: a thump you feel, a body, the blast, the crack, and a rumble rolling away.
+export function cannonSound(dist) {
+  if (!ctx) return; const v = Math.max(0.1, 1 / (1 + (dist / 190) * (dist / 190))); if (v < 0.04) return;
+  tone(bus.cannons, 0.6, 'sine', 95, 26, 1.0 * v);
+  tone(bus.cannons, 0.2, 'sawtooth', 220, 48, 0.32 * v);
+  burst(bus.cannons, 0.55, 'lowpass', 1500, 90, 0.95 * v);
+  burst(bus.cannons, 0.08, 'highpass', 3500, 1800, 0.45 * v);
+  burst(bus.cannons, 1.3, 'lowpass', 380, 50, 0.4 * v);
+}
+// A shell bursting in the air or on a hit: a short dull crump.
+export function crumpSound(dist) {
+  if (!ctx) return; const v = 1 / (1 + (dist / 130) * (dist / 130)); if (v < 0.05) return;
+  burst(bus.cannons, 0.4, 'lowpass', 1000, 110, 0.7 * v); tone(bus.cannons, 0.28, 'sine', 130, 38, 0.5 * v);
+}
+// ---- jingles: a small brass band, built from two detuned sawtooth voices and a square, with vibrato, through a low-pass ----
+const NOTE = { C3: 130.8, G3: 196, Bb3: 233.1, C4: 261.6, D4: 293.7, Eb4: 311.1, E4: 329.6, F4: 349.2, G4: 392, Ab4: 415.3, Bb4: 466.2, C5: 523.3, D5: 587.3, E5: 659.3, G5: 784 };
+function brass(freq, at, dur, vol, soft = 0) {
+  const t = ctx.currentTime + at, g = ctx.createGain(), lp = ctx.createBiquadFilter(), lfo = ctx.createOscillator(), depth = ctx.createGain();
+  lp.type = 'lowpass'; lp.frequency.setValueAtTime(soft ? 700 : 900, t); lp.frequency.linearRampToValueAtTime(soft ? 1400 : 3200, t + Math.min(0.09, dur * 0.4)); lp.frequency.linearRampToValueAtTime(soft ? 900 : 1600, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + 0.03); g.gain.setValueAtTime(vol * 0.85, t + dur * 0.75); g.gain.exponentialRampToValueAtTime(0.0008, t + dur + 0.12);
+  lfo.frequency.value = 5.4; depth.gain.value = freq * 0.006; lfo.connect(depth); lfo.start(t); lfo.stop(t + dur + 0.2);
+  for (const [type, det, v] of [['sawtooth', -5, 1], ['sawtooth', 6, 0.8], ['square', 0, 0.35]]) {
+    const o = ctx.createOscillator(), og = ctx.createGain(); o.type = type; o.frequency.value = freq; o.detune.value = det; og.gain.value = v;
+    depth.connect(o.frequency); o.connect(og); og.connect(lp); o.start(t); o.stop(t + dur + 0.2);
+  }
+  lp.connect(g); g.connect(bus.jingle);
+}
+function drum(at, vol) {                                            // a snare tap: a burst of noise, high-passed
+  const t = ctx.currentTime + at, src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+  src.buffer = noise; f.type = 'bandpass'; f.frequency.value = 1900; g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+  src.connect(f); f.connect(g); g.connect(bus.jingle); src.start(t, Math.random(), 0.12);
+}
+// A bugle-and-brass fanfare in C major: a rising call, a dotted answer, and a held chord. About three seconds.
+export function captureJingle() {
+  if (!ctx) return;
+  const call = [['G3', 0, 0.2], ['C4', 0.22, 0.2], ['E4', 0.44, 0.2], ['G4', 0.66, 0.34], ['E4', 1.04, 0.14], ['G4', 1.2, 0.14], ['C5', 1.36, 0.55]];
+  for (const [n, at, d] of call) { brass(NOTE[n], at, d, 0.2); brass(NOTE[n] / 2, at, d, 0.12); }
+  for (const [chord, at] of [[['C4', 'E4', 'G4', 'C5'], 2.0], [['C4', 'E4', 'G4', 'E5'], 2.0], [['E4', 'G4', 'C5', 'G5'], 2.0]].slice(0, 1)) for (const n of chord) brass(NOTE[n], at, 1.15, 0.13);
+  brass(NOTE.C3, 2.0, 1.15, 0.2); brass(NOTE.G5, 2.0, 1.15, 0.08);
+  for (const at of [0, 0.22, 0.44, 0.66, 1.04, 1.2, 1.36, 2.0]) drum(at, 0.12);
+}
+// The opposite: slow, low and soft, a falling minor line that comes to rest on a bare fifth, with a muffled drum. About three seconds.
+export function lostJingle() {
+  if (!ctx) return;
+  const line = [['G4', 0, 0.5], ['F4', 0.55, 0.5], ['Eb4', 1.1, 0.5], ['D4', 1.65, 0.45], ['C4', 2.15, 1.5]];
+  for (const [n, at, d] of line) { brass(NOTE[n], at, d, 0.17, 1); brass(NOTE[n] / 2, at, d, 0.1, 1); }
+  brass(NOTE.G3, 2.15, 1.5, 0.1, 1); brass(NOTE.Eb4, 2.15, 1.5, 0.06, 1);
+  for (const at of [0, 0.55, 1.1, 1.65, 2.15]) { tone(bus.jingle, 0.22, 'sine', 90, 45, 0.5); drum(at + 0.02, 0.05); }
+}
 export function boomSound(dist) {
   if (!ctx) return; const v = Math.max(0.12, near(dist * 0.4));
   burst(bus.booms, 1.4, 'lowpass', 900, 50, 0.9 * v); tone(bus.booms, 0.5, 'sine', 90, 30, 0.5 * v);
@@ -156,9 +207,11 @@ export function previewSound(key) {
   if (!ctx) return;
   const t = ctx.currentTime, later = (fn, ms) => setTimeout(fn, ms);
   if (key === 'guns') for (let i = 0; i < 6; i++) later(() => gunSound(0, true), i * 90);
+  else if (key === 'cannons') { cannonSound(0); later(() => crumpSound(20), 900); later(() => cannonSound(0), 1700); }
+  else if (key === 'jingle') { captureJingle(); later(lostJingle, 3600); }
   else if (key === 'hits') { hitTakenSound(); later(hitScoredSound, 350); later(hitTakenSound, 700); }
   else if (key === 'booms') boomSound(120);
-  else if (key === 'master') { for (let i = 0; i < 4; i++) later(() => gunSound(0, true), i * 90); later(() => boomSound(120), 500); }
+  else if (key === 'master') { for (let i = 0; i < 4; i++) later(() => gunSound(0, true), i * 90); later(() => cannonSound(40), 450); later(() => boomSound(120), 1100); }
   else if (key === 'wind') {
     const src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), g = ctx.createGain();
     src.buffer = noise; src.loop = true; bp.type = 'bandpass'; bp.Q.value = 0.6; bp.frequency.setValueAtTime(300, t); bp.frequency.linearRampToValueAtTime(1100, t + 1.8);

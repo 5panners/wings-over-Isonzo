@@ -62,31 +62,35 @@ export function buildGunMount(up) {
     fixed.add(box(2.4, 0.08, 2.4), '#484b45', 0, -0.55, 0).add(box(0.08, 0.5, 2.2), '#767971', 1.05, -0.3, 0).add(box(0.08, 0.5, 2.2), '#767971', -1.05, -0.3, 0);
   }
   root.add(fixed.mesh());
-  // turns with the gun: shield and gunner
-  const sh = u ? 0 : 1, gy = u ? 0 : 0.95, ty = u ? -0.1 : 0.95, ey = u ? 0.64 : 1.5;
+  // turns with the gun: shield and the loader behind it
+  const ty = u ? -0.1 : 0.95, ey = u ? 0.64 : 1.5;
   const turn = new Parts()
-    .add(box(1.5, 0.95, 0.07), '#707b68', 0, 0.12, 0.6).add(box(0.5, 0.18, 0.06), '#2c302b', 0, 0.12, 0.64)                          // shield with a slot for the guns
-    .add(box(0.6, 1.0, 0.42), '#7d6040', 0, ty + gy * 0, -0.85).add(cyl(0.18, 0.2, 1.0, 6), '#4a4636', -0.17, ty - 0.95, -0.85).add(cyl(0.18, 0.2, 1.0, 6), '#4a4636', 0.17, ty - 0.95, -0.85)
-    .add(new THREE.SphereGeometry(0.22, 6, 5), '#d2a67e', 0, ey, -0.85).add(new THREE.SphereGeometry(0.25, 6, 4, 0, 6.3, 0, 1.3), '#5b4a35', 0, ey + 0.04, -0.85)   // head and leather helmet
-    .add(box(0.36, 0.1, 0.1), '#1d1d1d', 0, ey - 0.02, -0.64)                                                                         // goggles
-    .add(box(0.13, 0.13, 0.62), '#7d6040', -0.24, 0.0, -0.45).add(box(0.13, 0.13, 0.62), '#7d6040', 0.24, 0.0, -0.45);                 // arms to the grips
-  if (!u) { turn.add(box(0.5, 0.5, 0.4), '#4a4636', 0, ty - 0.45, -0.85); }
+    .add(box(1.9, 1.25, 0.1), '#707b68', 0, 0.2, 0.85).add(box(0.8, 0.4, 0.08), '#2c302b', 0, 0.2, 0.9)                              // heavy shield with a wide port for the barrels
+    .add(box(0.6, 1.0, 0.42), '#7d6040', 0, ty, -0.95).add(cyl(0.18, 0.2, 1.0, 6), '#4d524d', -0.17, ty - 0.95, -0.95).add(cyl(0.18, 0.2, 1.0, 6), '#4d524d', 0.17, ty - 0.95, -0.95)
+    .add(new THREE.SphereGeometry(0.22, 6, 5), '#d2a67e', 0, ey, -0.95).add(new THREE.SphereGeometry(0.25, 6, 4, 0, 6.3, 0, 1.3), '#5b4a35', 0, ey + 0.04, -0.95)
+    .add(box(0.36, 0.1, 0.1), '#1d1d1d', 0, ey - 0.02, -0.74)                                                                         // goggles
+    .add(box(0.13, 0.13, 0.6), '#7d6040', -0.3, 0.05, -0.55).add(box(0.13, 0.13, 0.6), '#7d6040', 0.3, 0.05, -0.55);                   // arms to the hand wheels
+  if (!u) turn.add(box(0.5, 0.5, 0.4), '#4d524d', 0, ty - 0.45, -0.95);
   yawG.add(turn.mesh());
-  // turns with the elevation: cradle, ammunition drum, grips and sight
+  // turns with the elevation: the cradle with its breech block, hand wheels, shell box and sight
   const cradle = new Parts()
-    .add(box(0.4, 0.32, 0.7), '#5a615a', 0, 0, 0.1).add(cyl(0.3, 0.3, 0.2, 12), '#767971', 0.42, 0.04, 0.05, 0, 0, HALF).add(cyl(0.2, 0.2, 0.22, 8), '#2c2e2b', 0.42, 0.04, 0.05, 0, 0, HALF)   // ammunition drum
-    .add(box(0.06, 0.18, 0.06), '#222', -0.16, 0, -0.5).add(box(0.06, 0.18, 0.06), '#222', 0.16, 0, -0.5).add(box(0.4, 0.05, 0.05), '#222', 0, 0.08, -0.5)   // spade grips
-    .add(new THREE.TorusGeometry(0.15, 0.015, 4, 12), '#222', 0, 0.34, 0.2).add(cyl(0.015, 0.015, 0.22, 4), '#222', 0, 0.22, 0.2)       // ring sight
-    .add(box(0.5, 0.06, 0.06), '#4d524d', 0, -0.2, 0.15).add(box(0.06, 0.4, 0.06), '#4d524d', 0, -0.05, 0.15);                          // trunnion
+    .add(box(0.9, 0.5, 0.9), '#5a615a', 0, 0, 0.15).add(box(0.5, 0.36, 0.5), '#3d423d', 0, 0, -0.4)                                   // cradle and breech
+    .add(new THREE.TorusGeometry(0.17, 0.02, 4, 12), '#222', -0.45, 0, -0.35, 0, HALF).add(new THREE.TorusGeometry(0.17, 0.02, 4, 12), '#222', 0.45, 0, -0.35, 0, HALF)   // elevating and traversing wheels
+    .add(box(0.4, 0.3, 0.6), '#5d4a2c', 0.72, 0.0, 0.05)                                                                               // ready-use shell box
+    .add(cyl(0.075, 0.075, 0.34, 8), '#c9a44a', 0.62, 0.3, -0.1).add(cyl(0.075, 0.075, 0.34, 8), '#c9a44a', 0.82, 0.3, -0.1).add(cyl(0.075, 0.075, 0.34, 8), '#c9a44a', 0.72, 0.3, 0.2)   // brass shells
+    .add(new THREE.TorusGeometry(0.15, 0.015, 4, 12), '#222', 0, 0.44, 0.35).add(cyl(0.015, 0.015, 0.2, 4), '#222', 0, 0.34, 0.35)    // ring sight
+    .add(box(0.7, 0.07, 0.07), '#4d524d', 0, -0.3, 0.2).add(box(0.07, 0.5, 0.07), '#4d524d', 0, -0.12, 0.2);                           // trunnion
   pitchG.add(cradle.mesh());
-  // recoils with each shot: the two barrels in their cooling jackets
+  // recoils with each shot: two heavy barrels, their recoil sleeves and the hydraulic buffers
   const barrels = new Parts();
-  for (const x of [-0.14, 0.14]) {
-    barrels.add(cyl(0.055, 0.055, 1.55, 8), '#262626', x, 0, 0.95, HALF).add(cyl(0.105, 0.105, 0.85, 8), '#6d716c', x, 0, 0.6, HALF)
-      .add(cyl(0.115, 0.115, 0.06, 8), '#444', x, 0, 0.3, HALF).add(cyl(0.115, 0.115, 0.06, 8), '#444', x, 0, 0.6, HALF).add(cyl(0.115, 0.115, 0.06, 8), '#444', x, 0, 0.9, HALF)      // cooling rings
-      .add(cyl(0.09, 0.075, 0.14, 8), '#151515', x, 0, 1.78, HALF);                                                                   // muzzle brake
+  for (const x of [-0.22, 0.22]) {
+    barrels.add(cyl(0.12, 0.095, 2.4, 10), '#2b2b2b', x, 0, 1.3, HALF)                                                                 // barrel
+      .add(cyl(0.21, 0.21, 0.95, 10), '#6a6e68', x, 0, 0.6, HALF).add(cyl(0.23, 0.23, 0.07, 10), '#3a3a38', x, 0, 0.15, HALF).add(cyl(0.23, 0.23, 0.07, 10), '#3a3a38', x, 0, 1.07, HALF)   // recoil sleeve
+      .add(cyl(0.15, 0.15, 0.1, 10), '#3a3a38', x, 0, 1.7, HALF)                                                                       // reinforcing ring
+      .add(cyl(0.17, 0.2, 0.4, 10), '#161616', x, 0, 2.6, HALF).add(box(0.05, 0.22, 0.22), '#262626', x, 0, 2.6)                       // muzzle brake with its baffle
+      .add(cyl(0.045, 0.045, 1.2, 6), '#9a9d96', x * 1.75, -0.12, 0.8, HALF);                                                          // hydraulic buffer
   }
   recoilG.add(barrels.mesh());
-  const flashes = [-0.14, 0.14].map(x => { const f = makeFlash(1.6); f.position.set(x, 0, 1.85); pitchG.add(f); return f; });
+  const flashes = [-0.22, 0.22].map(x => { const f = makeFlash(2.6); f.position.set(x, 0, 2.85); pitchG.add(f); return f; });
   return { root, yawG, pitchG, recoilG, flashes };
 }
