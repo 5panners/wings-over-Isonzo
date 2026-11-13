@@ -29,10 +29,9 @@ export function createPickup(scene) {
   const halo = new THREE.Mesh(new THREE.IcosahedronGeometry(15, 1), new THREE.MeshBasicMaterial({ color: '#ffcf4a', fog: false, transparent: true, opacity: 0.18, depthWrite: false, blending: THREE.AdditiveBlending }));
   const ring = new THREE.Mesh(new THREE.TorusGeometry(9, 0.35, 5, 36), new THREE.MeshBasicMaterial({ color: '#fff0a8', fog: false, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending }));
   const ring2 = ring.clone(); ring2.material = ring.material.clone();
-  for (const o of [outlineEnv, outlineLoad, halo, ring, ring2]) { o.frustumCulled = false; o.renderOrder = 8; }
+  for (const o of [outlineEnv, outlineLoad]) { o.frustumCulled = false; o.renderOrder = 8; }
   outlineEnv.position.copy(envMesh.position); outlineLoad.position.copy(loadMesh.position);
-  bob.add(outlineEnv, outlineLoad); root.add(halo, ring, ring2);
-  halo.position.y = ring.position.y = ring2.position.y = 4.2;
+  bob.add(outlineEnv, outlineLoad);
 
   const state = { cur: null, nextAt: 0, id: 0, taken: new Set() };            // cur = { id, x, y, z, until }
   const vis = (on) => { root.visible = on; };
@@ -65,12 +64,9 @@ export function createPickup(scene) {
       const c = state.cur; vis(!!c); if (!c) return;
       const sway = Math.sin(t * 0.6 + c.id) * 2.5, bobY = Math.sin(t * 1.1 + c.id) * 1.2;
       root.position.set(c.x + sway, c.y + bobY, c.z + Math.cos(t * 0.5 + c.id) * 2.5); bob.rotation.y = t * 0.35;
-      const pulse = 0.5 + 0.5 * Math.sin(t * 4.4), pulse2 = 0.5 + 0.5 * Math.sin(t * 4.4 + 2.1), s = 1.1 + 0.07 * pulse;
+      const pulse = 0.5 + 0.5 * Math.sin(t * 4.4), s = 1.1 + 0.07 * pulse;
       outlineEnv.scale.setScalar(s); outlineLoad.scale.setScalar(s + 0.06); outlineEnv.material.opacity = outlineLoad.material.opacity = 0.45 + 0.55 * pulse;
       outlineEnv.material.color.setHSL(0.12 + 0.03 * pulse, 1, 0.55); outlineLoad.material.color.copy(outlineEnv.material.color);
-      halo.scale.setScalar(0.85 + 0.35 * pulse); halo.material.opacity = 0.1 + 0.2 * pulse;
-      ring.scale.setScalar(0.8 + 0.4 * pulse); ring.rotation.set(HALF_PI + 0.3 * Math.sin(t * 0.7), t * 0.9, 0); ring.material.opacity = 0.35 + 0.55 * pulse;
-      ring2.scale.setScalar(0.8 + 0.4 * pulse2); ring2.rotation.set(HALF_PI - 0.3 * Math.sin(t * 0.6), -t * 0.7, 0.8); ring2.material.opacity = 0.3 + 0.5 * pulse2;
     },
     position() { const c = state.cur; return c ? new THREE.Vector3(c.x, c.y, c.z) : null; },
   };

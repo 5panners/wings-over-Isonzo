@@ -48,9 +48,9 @@ camera.position.set(-470, 300, 900); camera.lookAt(0, 40, -100);
 const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), V2 = new THREE.Vector3(), S3 = new THREE.Vector3(), Zax = new THREE.Vector3(0, 0, 1), COL = new THREE.Color();
 const bullets = [], puffs = [];
 const tracerMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.16, 0.16, 4), new THREE.MeshBasicMaterial({ color: '#ffe27a', fog: false }), 500);
-const puffMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ flatShading: true }), 400);
+const puffMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ flatShading: true, transparent: true, opacity: 0.55, depthWrite: false }), 520);
 // glowing puffs (fireballs) are unlit so they stay bright at night
-const glowMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshBasicMaterial({ fog: false }), 120);
+const glowMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshBasicMaterial({ fog: false }), 320);
 for (const m of [tracerMesh, puffMesh, glowMesh]) { m.frustumCulled = false; m.count = 0; scene.add(m); }
 // Flashes of light for explosions and muzzle flashes. Every light in the scene costs every surface a little, so
 // there are only four, shared: a new flash takes a free one, else it displaces the weakest/farthest unless it is
@@ -70,7 +70,7 @@ function flashLight(pos, peak, life, range, prio, color = '#ffc070') {
 }
 const muzzleLight = (pos, power = 1) => flashLight(pos, 140 * power, 0.07, 32, 1, '#ffcf80');
 function puff(pos, color, size, life, rise = 2, spread = 0) {
-  if (puffs.length >= 400) puffs.shift();
+  if (puffs.length >= 520) puffs.shift();
   puffs.push({ p: pos.clone().add(V2.set((Math.random() - 0.5) * spread, (Math.random() - 0.5) * spread, (Math.random() - 0.5) * spread)), c: color, s: size, life, max: life, rise, glow: false });
   return puffs[puffs.length - 1];
 }
@@ -82,10 +82,27 @@ function explode(pos) {
   flashLight(V2.copy(pos).setY(pos.y + 4), 3500, 0.45, 320, 2);
 }
 
+// An airship hitting the ground: a huge rolling fireball, a column of black smoke, hundreds of sparks thrown up and out, and a light show
+// (a blinding first flash, then three more bursts of light a moment apart).
+function crashBlast(pos) {
+  boomSound(pos.distanceTo(camera.position)); crumpSound(Math.max(0, pos.distanceTo(camera.position) * 0.4));
+  const c = V2.copy(pos);
+  for (let i = 0; i < 28; i++) puff(c, ['#fff2b0', '#ffc24a', '#ff8a2a', '#ff5a1c'][i % 4], 7 + Math.random() * 12, 0.7 + Math.random() * 1.1, 6 + Math.random() * 10, 26).glow = true;          // fireball
+  for (let i = 0; i < 26; i++) puff(c, i % 3 ? '#2d2a28' : '#55504a', 6 + Math.random() * 9, 3 + Math.random() * 4, 7 + Math.random() * 9, 28);                                               // smoke column
+  for (let i = 0; i < 70; i++) puff(c, i % 3 ? '#ffe49a' : '#ffffff', 0.4 + Math.random() * 0.6, 0.9 + Math.random() * 1.8, 18 + Math.random() * 40, 36).glow = true;                       // sparks
+  for (let i = 0; i < 16; i++) puff(c, '#3a2a1c', 0.8 + Math.random(), 1.4 + Math.random() * 1.2, -16 - Math.random() * 12, 40);                                                            // flying wreckage
+  const at = c.clone();
+  flashLight(V2.copy(at).setY(at.y + 6), 9000, 0.7, 650, 3, '#ffd9a0');
+  for (const [d, k, col] of [[0.25, 5000, '#ffb060'], [0.6, 4000, '#ff9040'], [1.1, 3000, '#ff7a30']]) setTimeout(() => {
+    for (let i = 0; i < 18; i++) puff(at, ['#fff2b0', '#ffb040'][i % 2], 0.4 + Math.random() * 0.5, 0.8 + Math.random(), 14 + Math.random() * 30, 40).glow = true;
+    flashLight(V2.copy(at).setY(at.y + 10 + Math.random() * 8).add(V3a.set((Math.random() - 0.5) * 40, 0, (Math.random() - 0.5) * 40)), k, 0.5, 520, 3, col);
+  }, d * 1000);
+}
+
 // ---------------- Zeppelin Front ----------------
 const front = createFront(scene, {
   jingle: won => (won ? captureJingle() : lostJingle()),
-  puff, explode, say: t => say(t), label: id => label(id), light: (p, power) => muzzleLight(p, power),
+  puff, explode, crashBlast, say: t => say(t), label: id => label(id), light: (p, power) => muzzleLight(p, power),
   shoot(origin, dir, side, real, spec) {               // airship gunners: real shells on the host, tracers everywhere else
     bullets.push({ p: origin.clone(), v: dir.clone().multiplyScalar(spec.speed), life: spec.life, by: 'air-' + side, team: side, real, shell: true, dmg: spec.dmg, r: spec.r });
     cannonSound(origin.distanceTo(camera.position)); if (real) shellStats.fired++;
@@ -201,7 +218,7 @@ function onMessage(m, from) {
       if (m.d) { sky.rate = +m.d[1] || 0; const off = Math.abs(sky.tod - m.d[0]); if (Math.min(off, 24 - off) > 0.03) sky.tod = +m.d[0] || 0; }   // the host's clock is everyone's clock
     }
   } else if (m.t === 'x') {                                   // someone's bullet hit a plane we own
-    const p = planes.get(m.to); if (p && p.local) damage(p, Math.min(+m.d || 0, 40), m.by, ['eng', 'wingL', 'wingR', 'tail', 'fuel', 'pilot', 'body'].includes(m.z) ? m.z : undefined);
+    const p = planes.get(m.to); if (p && p.local) damage(p, Math.min(+m.d || 0, 80), m.by, ['eng', 'wingL', 'wingR', 'tail', 'fuel', 'pilot', 'body'].includes(m.z) ? m.z : undefined);
   } else if (m.t === 'k') onKill(m.v, m.by, m.c);
   else if (m.t === 'rk') { bullets.push({ p: new THREE.Vector3(...m.o), v: new THREE.Vector3(...m.v), life: ROCKET.life, by: m.by, team: m.team, real: false, rocket: true }); rocketSound(new THREE.Vector3(...m.o).distanceTo(camera.position)); }   // somebody else's rocket, shown here
   else if (m.t === 'pc' && isHost()) pickup.clear(now());                       // somebody took the pickup
@@ -407,20 +424,20 @@ function repair(p, t, dt) {
   if (p.onGround) p.fire = false;                                           // the crew put the fire out
   p.repairing = t;
 }
-const BE = new THREE.Vector3(), TB1 = new THREE.Quaternion(), TB2 = new THREE.Quaternion(), XAX = new THREE.Vector3(1, 0, 0);
+const V3a = new THREE.Vector3(), BE = new THREE.Vector3(), TB1 = new THREE.Quaternion(), TB2 = new THREE.Quaternion(), XAX = new THREE.Vector3(1, 0, 0);
 // A small explosion where a round strikes an enemy: a quick fireball and sparks, a puff of smoke, and a flash of light on the
 // aircraft around it. Your own hits get the brighter flash; the light is rate-limited so rapid fire does not use up the shared lights.
 let lastHitLight = 0; const hitStats = { total: 0, mine: 0, lit: 0, lastPos: null };    // hitStats is for tests
 function hitBurst(pos, mine, t) {
   hitStats.total++; if (mine) hitStats.mine++; hitStats.lastPos = pos.toArray();
   const n = mine ? 5 : 3;
-  for (let i = 0; i < n; i++) puff(pos, i < 2 ? '#fff4c0' : i < 4 ? '#ffb040' : '#ff7a28', (mine ? 1.2 : 0.9) + Math.random() * 1.3, 0.1 + Math.random() * 0.14, 1.5, 1.6).glow = true;      // fireball
-  for (let i = 0; i < 3; i++) puff(pos, '#ffe8a0', 0.25 + Math.random() * 0.25, 0.18 + Math.random() * 0.2, -9 - Math.random() * 6, 3.2).glow = true;                                    // sparks that fall away
-  puff(pos, '#3a3633', 1 + Math.random(), 0.5 + Math.random() * 0.5, 2.5, 1.5);                                                                                                     // smoke
-  if (t - lastHitLight > (mine ? 0.05 : 0.2)) { lastHitLight = t; hitStats.lit++; flashLight(pos, mine ? 240 : 120, 0.14, 34, 1, '#ffc27a'); }
+  for (let i = 0; i < n; i++) puff(pos, i < 2 ? '#fff4c0' : i < 4 ? '#ffb040' : '#ff7a28', (mine ? 0.6 : 0.45) + Math.random() * 0.6, 0.08 + Math.random() * 0.1, 1.2, 1.0).glow = true;      // fireball
+  for (let i = 0; i < 3; i++) puff(pos, '#ffe8a0', 0.15 + Math.random() * 0.15, 0.15 + Math.random() * 0.15, -9 - Math.random() * 6, 2).glow = true;                                    // sparks that fall away
+  puff(pos, '#3a3633', 0.6 + Math.random() * 0.5, 0.5 + Math.random() * 0.5, 2.5, 1.0);                                                                                                     // smoke
+  if (t - lastHitLight > (mine ? 0.05 : 0.2)) { lastHitLight = t; hitStats.lit++; flashLight(pos, mine ? 150 : 80, 0.12, 26, 1, '#ffc27a'); }
 }
 // ---- rockets (Le Prieur): eight on the struts, loaded by flying through the pickup; R fires one ----
-const ROCKET = { speed: 175, life: 1.6, dmg: 40, airDmg: 170, r: 5 };          // a hit does 40 to an aircraft and 170 to an airship gas cell (which holds 320)
+const ROCKET = { speed: 175, life: 1.6, dmg: 70, airDmg: 100, r: 5 };          // a hit does 70 to an aircraft (two kill) and 100 to an airship gas cell (which holds 320)
 let nextRocketAt = 0;
 function fireRocket(p, t) {
   if (!p.alive || p.dying || p.onGround || p.rockets <= 0 || t < nextRocketAt) return;
@@ -458,7 +475,7 @@ function updateEffects(dt) {
     const f = puffs[i]; f.life -= dt; if (f.life <= 0) { puffs.splice(i, 1); continue; }
     f.p.y += f.rise * dt; const a = f.life / f.max, s = f.s * (1.6 - a) * Math.min(1, a * 3);
     M4.compose(f.p, Q.identity(), S3.set(s, s, s));
-    if (f.glow) { if (g < 120) { glowMesh.setMatrixAt(g, M4); glowMesh.setColorAt(g++, COL.set(f.c)); } }
+    if (f.glow) { if (g < 320) { glowMesh.setMatrixAt(g, M4); glowMesh.setColorAt(g++, COL.set(f.c)); } }
     else { puffMesh.setMatrixAt(n, M4); puffMesh.setColorAt(n++, COL.set(f.c)); }
   }
   glowMesh.count = g; glowMesh.instanceMatrix.needsUpdate = true; if (glowMesh.instanceColor) glowMesh.instanceColor.needsUpdate = true;
