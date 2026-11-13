@@ -50,7 +50,7 @@ function buildAirship(side) {
     // The hit zone's aura: a slightly larger, back-faced copy of the cell, drawn as light, so each gas cell is ringed by a glowing outline.
     // Shrunk a little along the length (about the cell's own centre) so that neighbouring cells stay separate.
     const am = new THREE.MeshBasicMaterial({ color: '#ffb347', fog: false, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.BackSide });
-    const aura = new THREE.Mesh(geo, am); aura.scale.set(1.24, 1.24, 0.95); aura.position.z = ((i + 0.5) / CELLS - 0.5) * L * 0.05; aura.renderOrder = 8; aura.frustumCulled = false; aura.visible = false; g.add(aura); auras.push(am);
+    const aura = new THREE.Mesh(geo, am); aura.scale.set(1.24, 1.24, 0.95); aura.position.z = ((i + 0.5) / CELLS - 0.5) * L * 0.05; aura.renderOrder = 8; aura.frustumCulled = false; aura.visible = false; auras.push(am);
   }
   // tail fins: vertical pair in national colours, horizontal pair plain
   const zf = -L / 2 + 22, rf = radiusAt(0.14) + 5.5, finCols = side === 'it' ? ['#2f8a45', '#f4f1e6', '#c9302a'] : ['#c9302a', '#f4f1e6', '#c9302a'];
@@ -284,13 +284,6 @@ export function createFront(scene, fx) {
           if (Math.random() < 0.6) fx.puff(p, '#2b2927', 4 + Math.random() * 4, 2.6, 6, 3);
         }
       }
-      // hit-zone auras: bright, pulsing orange on the enemy's gas cells (the pulse quickens as a cell weakens), a faint blue on our own
-      { const enemy = !!myTeam && side !== myTeam;
-        for (let i = 0; i < CELLS; i++) {
-          const am = s.auras[i], on = !s.burning[i] && !s.down && !s.crashed, weak = 1 - Math.max(0, s.cells[i]) / CELL_HP, pulse = 0.5 + 0.5 * Math.sin(now * (3.2 + 4 * weak) + i * 0.9);
-          am.opacity = on ? (enemy ? 0.5 + 0.5 * pulse : 0.06 + 0.08 * pulse) : 0; am.color.setHSL(enemy ? 0.06 + 0.04 * pulse + 0.03 * weak : 0.54, 1, enemy ? 0.5 : 0.6);
-          am.userData ? 0 : 0; s.auraMeshes ??= s.mesh.children.filter(c => c.renderOrder === 8); s.auraMeshes[i].visible = am.opacity > 0.01;
-        } }
       if (!s.down && !frozen) turrets(s, now, planes, host, level, dt); else for (const t of s.turrets) t.mount.flashes.forEach(f => { f.visible = false; });
     }
     // ground point visuals and (host) capture
