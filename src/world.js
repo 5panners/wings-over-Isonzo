@@ -87,7 +87,7 @@ function flat(h, f, level) { // flatten around airfield (rotated ellipse)
   const u = (dx * c + dz * s) / 135, v = (-dx * s + dz * c) / 62;
   return lerp(level, h, sst(0.75, 1.45, Math.sqrt(u * u + v * v)));
 }
-export function H(x, z) {
+function baseH(x, z) {                                  // the landscape before the railway is cut into it
   const r = riverX(z), d = x - r, ad = Math.abs(d), lvl = riverLevel(z), rw = riverHalf(z);
   const M = sst(40, -600, z);
   const n1 = fbm(x * 0.006, z * 0.006), wx = x + 60 * fbm(x * 0.004 + 3, z * 0.004, 2), wz = z + 60 * fbm(x * 0.004, z * 0.004 + 8, 2), rg = ridged(wx * 0.0023, wz * 0.0023, 3);
@@ -115,3 +115,89 @@ export function H(x, z) {
   h = lerp(h, -7, sst(10, -30, s));
   return h;
 }
+
+// =====================================================================================================================
+// The railway. One line crosses the Salcano bridge (target C1). Each way from the bridge it is laid out like a real
+// mountain railway: it follows the contour of the hillside at a gentle gradient, runs on a ledge cut into the slope
+// (cutting where the ground is higher, embankment where lower), springs onto a stone viaduct where the ground falls
+// away too far, and ends in a tunnel mouth where it meets a hill. The ledge is cut into H below, so the terrain,
+// collision and everything else see it.
+// =====================================================================================================================
+const STEP = 10, GRADE = 0.3;                                    // planning step in units; gradient 3% (rise per step)
+const bridgeT = TARGETS.find(t => t.id === 'C1');
+export const BRIDGE = { x: bridgeT.x, z: bridgeT.z, dx: Math.cos(-0.28), dz: -Math.sin(-0.28), half: 48, y: riverLevel(bridgeT.z) + 24.6 + 0.5 };   // deck top; matches the bridge model in objects.js
+const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+
+function planBranch(sign, goals) {                                // goals: waypoints to head for, in order
+  let x = BRIDGE.x + sign * BRIDGE.dx * BRIDGE.half, z = BRIDGE.z + sign * BRIDGE.dz * BRIDGE.half, y = BRIDGE.y, th = Math.atan2(sign * BRIDGE.dz, sign * BRIDGE.dx);
+  const pts = [{ x, z, y }]; let end = 'limit', gi = 0;
+  for (let i = 0; i < 160; i++) {
+    let best = null; const goal = goals[gi];
+    for (let k = -5; k <= 5; k++) {
+      const a = th + k * 0.04, qx = x + Math.cos(a) * STEP, qz = z + Math.sin(a) * STEP, g = baseH(qx, qz);
+      const nx = -Math.sin(a), nz = Math.cos(a), cross = Math.abs(baseH(qx + nx * 9, qz + nz * 9) - baseH(qx - nx * 9, qz - nz * 9)) / 18;
+      const away = Math.abs(qx - riverX(qz)) - riverHalf(qz);        // stay off the water, except on the bridge itself
+      let cost = (g < y ? 0.5 * (y - g) : 1.6 * (g - y)) + 12 * cross + 0.4 * k * k * 0.25 + (away < 32 ? (32 - away) * 3 : 0) + (g < 1.5 ? 300 : 0);
+      cost += 34 * Math.abs(angDiff(Math.atan2(goal.z - qz, goal.x - qx), a));
+      if (!best || cost < best.cost) best = { cost, a, qx, qz, g };
+    }
+    if (Math.abs(best.qx) > 1250 || best.qz > 640 || best.qz < -780) { end = 'limit'; break; }
+    if (best.g > y + 7) { end = 'tunnel'; pts.push({ x: best.qx, z: best.qz, y }); break; }          // the hill is in the way: go into it
+    y = Math.min(y + GRADE, Math.max(y - GRADE, best.g)); x = best.qx; z = best.qz; th = best.a; pts.push({ x, z, y });
+    if (Math.hypot(goal.x - x, goal.z - z) < 30) { if (gi === goals.length - 1) { end = 'terminus'; break; } gi++; }
+  }
+  return { pts, end };
+}
+function smoothPath(p, passes) {                                  // soften the planning kinks; the first point (at the bridge) stays put
+  for (let n = 0; n < passes; n++) { const q = p.map(v => ({ ...v })); for (let i = 1; i < p.length - 1; i++) { q[i].x = (p[i - 1].x + 2 * p[i].x + p[i + 1].x) / 4; q[i].z = (p[i - 1].z + 2 * p[i].z + p[i + 1].z) / 4; q[i].y = (p[i - 1].y + 2 * p[i].y + p[i + 1].y) / 4; } p = q; }
+  return p;
+}
+function resample(p, spacing) {                                   // a Catmull-Rom curve through the points, at even spacing
+  const out = [], at = (i) => p[Math.max(0, Math.min(p.length - 1, i))];
+  for (let i = 0; i < p.length - 1; i++) {
+    const p0 = at(i - 1), p1 = p[i], p2 = p[i + 1], p3 = at(i + 2), n = Math.max(1, Math.round(Math.hypot(p2.x - p1.x, p2.z - p1.z) / spacing));
+    for (let k = 0; k < n; k++) { const t = k / n, t2 = t * t, t3 = t2 * t, f = (a, b, c, d) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3); out.push({ x: f(p0.x, p1.x, p2.x, p3.x), z: f(p0.z, p1.z, p2.z, p3.z), y: p1.y + (p2.y - p1.y) * t }); }
+  }
+  out.push({ ...p[p.length - 1] }); return out;
+}
+
+let _rail = null;
+export const rail = () => (_rail ??= buildRail());
+function buildRail() {
+  const b1 = TARGETS.find(t => t.id === 'B1');
+  // east: across the valley floor, then north along the hillside; west: along the foot of Sabotino and over the plain to Cormons
+  const e = planBranch(+1, [{ x: 150, z: 112 }, { x: 150, z: 62 }, { x: 128, z: -20 }, { x: 98, z: -88 }, { x: b1.x + 12, z: b1.z + 14 }]), w = planBranch(-1, [{ x: -150, z: 106 }, { x: -292, z: 94 }]);
+  const east = resample(smoothPath(e.pts, 3), 2.5), west = resample(smoothPath(w.pts, 3), 2.5).reverse();
+  const bridgeLen = BRIDGE.half * 2, nb = Math.round(bridgeLen / 2.5), onBridge = [];
+  for (let i = 1; i < nb; i++) { const t = i / nb * 2 - 1; onBridge.push({ x: BRIDGE.x + BRIDGE.dx * BRIDGE.half * t, z: BRIDGE.z + BRIDGE.dz * BRIDGE.half * t, y: BRIDGE.y, bridge: true }); }
+  const P = [...west.slice(0, -1), ...onBridge, ...east.slice(0)];     // west end ... bridge ... east end
+  // tidy the join so the bridge section is exactly level and straight
+  let s = 0; P.forEach((p, i) => { if (i) s += Math.hypot(p.x - P[i - 1].x, p.z - P[i - 1].z); p.s = s; });
+  P.forEach((p, i) => { const a = P[Math.max(0, i - 2)], b = P[Math.min(P.length - 1, i + 2)], l = Math.hypot(b.x - a.x, b.z - a.z) || 1; p.tx = (b.x - a.x) / l; p.tz = (b.z - a.z) / l; });
+  // what is under each point: bridge, a viaduct where the ground is far below, or ground (cutting or embankment)
+  P.forEach(p => { p.g = baseH(p.x, p.z); p.kind = p.bridge ? 'bridge' : (p.y - p.g > 3.4 ? 'via' : 'earth'); });
+  for (let pass = 0; pass < 2; pass++) {                              // no tiny viaducts, no tiny gaps between them
+    let i = 0; while (i < P.length) { let j = i; while (j < P.length && P[j].kind === P[i].kind) j++; const len = (j - i) * 2.5;
+      if (P[i].kind === 'via' && len < 14) for (let k = i; k < j; k++) P[k].kind = 'earth';
+      if (P[i].kind === 'earth' && len < 12 && i > 0 && j < P.length && P[i - 1].kind === 'via' && P[j].kind === 'via') for (let k = i; k < j; k++) P[k].kind = 'via'; i = j; }
+  }
+  // spatial hash for the nearest-point queries used by the terrain cut
+  const cell = 30, grid = new Map(), key = (i, j) => i * 100003 + j;
+  P.forEach((p, idx) => { const k = key(Math.floor(p.x / cell), Math.floor(p.z / cell)); (grid.get(k) ?? grid.set(k, []).get(k)).push(idx); });
+  const ends = [{ type: w.end, i: 0, dir: -1 }, { type: e.end, i: P.length - 1, dir: +1 }];
+  return { P, grid, cell, key, ends, length: s, bridgeFrom: west.length - 1, bridgeTo: west.length - 1 + onBridge.length };
+}
+// nearest point of the line to (x, z) within `reach`, or null
+function nearestRail(x, z, reach) {
+  const R = rail(), ci = Math.floor(x / R.cell), cj = Math.floor(z / R.cell), n = Math.ceil(reach / R.cell); let best = null, bd = reach * reach;
+  for (let i = ci - n; i <= ci + n; i++) for (let j = cj - n; j <= cj + n; j++) { const l = R.grid.get(R.key(i, j)); if (l) for (const idx of l) { const p = R.P[idx], d = (p.x - x) ** 2 + (p.z - z) ** 2; if (d < bd) { bd = d; best = p; } } }
+  return best ? { p: best, d: Math.sqrt(bd) } : null;
+}
+export function railDist(x, z, reach = 30) { const r = nearestRail(x, z, reach); return r ? r.d : Infinity; }
+function railCarve(h, x, z) {
+  const r = nearestRail(x, z, 26); if (!r || r.p.kind === 'via' || r.p.kind === 'bridge') return h;
+  const t = Math.max(0, r.d - 4.6), bed = r.p.y - 0.12;
+  return bed >= h ? Math.max(h, bed - 0.7 * t) : Math.min(h, bed + 1.1 * t);     // embankment slopes 1:1.4, cutting slopes 1:1.1
+}
+export function H(x, z) { return railCarve(baseH(x, z), x, z); }
+export { baseH };
