@@ -126,10 +126,8 @@ export function createRailway(scene, fx = {}) {
     for (const z of [-1.9, 1.9]) wheels(p, 0, 0.4, [z], 0.82);
     return { mesh: p.mesh(TRAIN_MAT, true), hl: 3.0, win: null };
   }
-  // the lamp on the engine: a hot glow and a faint beam down the track, for the night service
+  // the lamp on the engine: a small hot glow, for the night service
   const lampGlow = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 6), new THREE.MeshBasicMaterial({ color: '#fff0c0', fog: false, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
-  const beam = new THREE.Mesh(new THREE.ConeGeometry(6, 46, 10, 1, true), new THREE.MeshBasicMaterial({ color: '#ffe9b0', fog: false, transparent: true, opacity: 0.1, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
-  beam.rotation.x = -HALF; beam.position.set(0, 0, 23 + 0.4); beam.frustumCulled = false; lampGlow.frustumCulled = false; beam.renderOrder = lampGlow.renderOrder = 6;
 
   const consists = {};                                                              // built once each, when first needed
   function consist(kind) {
@@ -140,8 +138,7 @@ export function createRailway(scene, fx = {}) {
     else for (let i = 0; i < 8; i++) cars.push(wagon(i % 3));
     const g = new THREE.Group(); g.visible = false; let off = 0; const parts = [];
     for (const c of cars) { const v = new THREE.Group(); v.add(c.mesh); if (c.win) v.add(c.win); g.add(v); off += c.hl; parts.push({ v, hl: c.hl, off, chimney: c.chimney }); off += c.hl + 0.6; }
-    parts[0].v.add(lampGlow.clone(), beam.clone()); parts[0].v.children.slice(-2).forEach(m => { m.position.y = m.geometry.type === 'SphereGeometry' ? 2.75 : 2.75; m.position.z = m.geometry.type === 'SphereGeometry' ? 4.1 : 4.1 + 23; });
-    parts[0].lamp = parts[0].v.children.slice(-2);
+    const lamp = lampGlow.clone(); lamp.position.set(0, 2.75, 4.1); parts[0].v.add(lamp); parts[0].lamp = [lamp];
     root.add(g); return (consists[kind] = { g, parts, len: off - 0.6, lit: kind !== 'freight' });
   }
 
