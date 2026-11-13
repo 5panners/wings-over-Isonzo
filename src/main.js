@@ -244,8 +244,15 @@ function readInput() {                                        // keyboard and co
 
 // ---------------- main loop ----------------
 let last = now();
+// frames per second, averaged over half a second, shown top right (green 50+, amber 30+, red below)
+let fpsFrames = 0, fpsSince = performance.now();
+function countFrame() {
+  fpsFrames++; const n = performance.now();
+  if (n - fpsSince >= 500) { const fps = fpsFrames * 1000 / (n - fpsSince), el = $('fps'); el.textContent = Math.round(fps) + ' FPS'; el.style.color = fps >= 50 ? '#9fe08a' : fps >= 30 ? '#f0c05a' : '#ff7a5c'; fpsFrames = 0; fpsSince = n; }
+}
 function frame() {
   requestAnimationFrame(frame);
+  countFrame();
   const t = now(), dt = Math.min(0.05, t - last); last = t;
   if (running && !window.__woi.freeze) step(t, dt);   // freeze: test hook to hold the simulation still
   else if (!running && mode === 'front') front.update(dt, t, { host: true, planes, level: botSettings.level, frozen: true });   // airships drift past behind the start screen
@@ -340,7 +347,7 @@ function step(t, dt) {
     if (!hit && mode === 'front') {                            // rounds striking an airship (any tracer stops on the hull; only real ones do damage)
       const fh = front.hitTest(b.p, BE.copy(b.p).add(V), b.team);
       if (fh) {
-        puff(BE, '#ffd36b', 1, 0.3, 0, 2);
+        if (b.real) hitBurst(BE, b.by === me?.id, t);
         if (b.real) {
           if (isHost()) front.damage(fh.side, fh.cell, GUN.damage, b.by); else net?.send({ t: 'zx', s: fh.side, c: fh.cell, d: GUN.damage, by: b.by }, hostId());
           if (b.by === me?.id) { hitFlash = t + 0.12; hitScoredSound(); }
@@ -350,7 +357,7 @@ function step(t, dt) {
     }
     b.p.add(V);
     if (hit) {
-      puff(hit.pos, '#ffd36b', 0.8, 0.25, 0, 2); if (b.shell) shellStats.hit++;
+      hitBurst(b.p, b.by === me?.id, t); if (b.shell) shellStats.hit++;
       if (hit.local) damage(hit, b.dmg ?? GUN.damage, b.by, where); else net?.send({ t: 'x', to: hit.id, by: b.by, d: b.dmg ?? GUN.damage, z: where }, hit.owner);
       if (b.by === me?.id) { hitFlash = t + 0.12; hitScoredSound(); }
     }
@@ -382,6 +389,17 @@ function repair(p, t, dt) {
   p.repairing = t;
 }
 const BE = new THREE.Vector3(), TB1 = new THREE.Quaternion(), TB2 = new THREE.Quaternion(), XAX = new THREE.Vector3(1, 0, 0);
+// A small explosion where a round strikes an enemy: a quick fireball and sparks, a puff of smoke, and a flash of light on the
+// aircraft around it. Your own hits get the brighter flash; the light is rate-limited so rapid fire does not use up the shared lights.
+let lastHitLight = 0; const hitStats = { total: 0, mine: 0, lit: 0, lastPos: null };    // hitStats is for tests
+function hitBurst(pos, mine, t) {
+  hitStats.total++; if (mine) hitStats.mine++; hitStats.lastPos = pos.toArray();
+  const n = mine ? 5 : 3;
+  for (let i = 0; i < n; i++) puff(pos, i < 2 ? '#fff4c0' : i < 4 ? '#ffb040' : '#ff7a28', (mine ? 1.2 : 0.9) + Math.random() * 1.3, 0.1 + Math.random() * 0.14, 1.5, 1.6).glow = true;      // fireball
+  for (let i = 0; i < 3; i++) puff(pos, '#ffe8a0', 0.25 + Math.random() * 0.25, 0.18 + Math.random() * 0.2, -9 - Math.random() * 6, 3.2).glow = true;                                    // sparks that fall away
+  puff(pos, '#3a3633', 1 + Math.random(), 0.5 + Math.random() * 0.5, 2.5, 1.5);                                                                                                     // smoke
+  if (t - lastHitLight > (mine ? 0.05 : 0.2)) { lastHitLight = t; hitStats.lit++; flashLight(pos, mine ? 240 : 120, 0.14, 34, 1, '#ffc27a'); }
+}
 // a shell going off: a dark flak puff with a hot centre, bigger and brighter if it struck something
 function shellBurst(pos, struck) {
   for (let i = 0; i < (struck ? 6 : 4); i++) puff(pos, i % 3 ? '#2d2a28' : '#55504a', 2 + Math.random() * 2.5, 1.2 + Math.random() * 1.4, 1.5, 5);
@@ -719,6 +737,6 @@ showVolumes();
 applyGfx(false);
 $('form').addEventListener('submit', e => { e.preventDefault(); if (running) applyLiveSetup(); else start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
-window.__woi = { weather, shellStats, LIGHTS, front, get mode() { return mode; }, setMode, flight, shadowExtent: () => sun.shadow.camera.right, gfx, renderer, explode, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
+window.__woi = { hitStats, glowCount: () => glowMesh.count, weather, shellStats, LIGHTS, front, get mode() { return mode; }, setMode, flight, shadowExtent: () => sun.shadow.camera.right, gfx, renderer, explode, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
 frame();
 if (params.get('autostart')) start();

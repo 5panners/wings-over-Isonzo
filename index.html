@@ -21,6 +21,7 @@
   #front .cells i { display: inline-block; width: 11px; height: 11px; margin: 0 1px; border-radius: 2px; vertical-align: -1px; }
   #front .lost { color: #ff9a7a; font-weight: 600; }
   body.cine #front { opacity: 0; }
+  #fps { position: fixed; top: 10px; right: 112px; z-index: 6; font: 600 12px Inter, system-ui, sans-serif; letter-spacing: .08em; color: rgba(255, 255, 255, .9); background: rgba(16, 22, 28, .6); padding: 3px 8px; border-radius: 3px; pointer-events: none; min-width: 52px; text-align: center; font-variant-numeric: tabular-nums; }
   #feed { position: fixed; top: 42px; right: 18px; text-align: right; font-size: 13.5px; text-shadow: 0 1px 3px #000; }
   #msg { position: fixed; top: 30%; left: 0; right: 0; text-align: center; font: 700 34px Georgia, serif; text-shadow: 0 2px 10px #000; }
   #msg small { display: block; font: 400 16px Inter, system-ui, sans-serif; margin-top: 4px; }
@@ -95,7 +96,8 @@
 <body>
 <canvas id="c"></canvas>
 <canvas id="hud"></canvas>
-<div id="build" aria-label="Build number">Build 52</div>
+<div id="fps" aria-label="Frames per second">-- FPS</div>
+<div id="build" aria-label="Build number">Build 54</div>
 <div id="ui">
   <div id="score" class="panel"></div>
   <div id="stats" class="panel"></div>

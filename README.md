@@ -119,6 +119,10 @@ The airship guns are heavy cannons: slower to fire (one shell about every 0.85 s
 
 Every house has windows. By day they are dark glass; at night about three quarters of the houses have lit rooms, which come on one by one through the dusk (in warm yellows and oranges), and about half of the houses go dark again late in the evening, between about 22:30 and 04:30. All the windows are drawn as a single instanced mesh, so they cost almost nothing.
 
+### Hit effects and FPS
+
+Every round of yours that strikes an enemy aircraft or airship makes a small explosion: a quick fireball, sparks, a puff of smoke and a brief flash of light on the metal around it. A counter in the top right shows the frame rate, green at 50 and above, amber at 30 and above, red below that.
+
 ### Guns and muzzle flash
 
 Every gun flashes when it fires, and the flash lights up the hull, wings and ground around it for a moment. Aircraft carry twin machine guns on the nose that fire alternately, so the flashes alternate left and right. Each airship has four gun mounts, two on top and two slung under the gondolas: twin guns in cooling jackets with an ammunition drum and shield, a gunner at each, and a pedestal and gun ring or blister. Gunners swing their guns to follow the target between bursts, and the guns recoil with each shot.
