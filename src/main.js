@@ -178,7 +178,7 @@ function goDown(p, by, why) {                 // fatally hit: falls burning and 
   if (p === me) say('Going down! ' + why);
 }
 function damage(p, amount, by, where) {
-  if (!p.alive || p.dying) return;
+  if (!p.alive || p.dying || (god.on && p === me)) return;
   p.lastHitBy = by; p.lastHitAt = now();
   const msgs = takeHit(p, amount, where, p === me ? 1 / flight.tough : 1);
   if (p === me) { hitTakenSound(); msgs.forEach(say); }
@@ -246,7 +246,17 @@ function manageBots() {
 
 // ---------------- input ----------------
 const keys = new Set(); let mouseFire = false;
-addEventListener('keydown', e => { if (e.code === 'Escape' && running) { toggleControls(); if (controlsOpen()) showLiveSetup(); return; } if (controlsOpen()) return; startSound(); if (running && (e.code === 'Comma' || e.code === 'Period')) { setCamEase(camEase + (e.code === 'Period' ? 0.1 : -0.1)); say(`Camera smoothing ${Math.round(camEase * 100)}%`); } if (e.code === 'KeyM' && running) { say(toggleMute() ? 'Sound off' : 'Sound on'); $('aud-mute').checked = isMuted(); }
+// Developer god camera (F9): the view detaches from the aircraft and flies free. Mouse looks round (the pointer is captured),
+// arrow keys move (up/down forward and back, left/right sideways), PageUp / PageDown or R / F rise and fall, Shift is fast, Ctrl is slow,
+// the wheel changes the speed. Your aircraft is held where it is and cannot be hurt; everything else carries on.
+const god = { on: false, yaw: 0, pitch: 0, speed: 120, pos: new THREE.Vector3() };
+function setGod(on) {
+  god.on = on; if (on) { god.pos.copy(camera.position); const e = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ'); god.yaw = e.y; god.pitch = e.x; $('c').requestPointerLock?.(); say('God camera: mouse looks, arrows move, PgUp/PgDn up and down, Shift fast, wheel speed, F9 to leave'); }
+  else { document.exitPointerLock?.(); say('God camera off'); if (me) { camera.position.copy(me.pos); camLook.copy(me.pos); } }
+}
+addEventListener('mousemove', e => { if (god.on && document.pointerLockElement) { god.yaw -= e.movementX * 0.0022; god.pitch = THREE.MathUtils.clamp(god.pitch - e.movementY * 0.0022, -1.55, 1.55); } });
+addEventListener('wheel', e => { if (god.on) god.speed = THREE.MathUtils.clamp(god.speed * (e.deltaY < 0 ? 1.25 : 0.8), 5, 3000); }, { passive: true });
+addEventListener('keydown', e => { if (e.code === 'F9' && running) { e.preventDefault(); setGod(!god.on); return; } if (e.code === 'Escape' && running) { toggleControls(); if (controlsOpen()) showLiveSetup(); return; } if (controlsOpen()) return; startSound(); if (running && (e.code === 'Comma' || e.code === 'Period')) { setCamEase(camEase + (e.code === 'Period' ? 0.1 : -0.1)); say(`Camera smoothing ${Math.round(camEase * 100)}%`); } if (e.code === 'KeyM' && running) { say(toggleMute() ? 'Sound off' : 'Sound on'); $('aud-mute').checked = isMuted(); }
   if (running && (e.code === 'BracketLeft' || e.code === 'BracketRight')) { if (isHost()) { sky.tod = (sky.tod + (e.code === 'BracketRight' ? 1 : 23)) % 24; say('Time set to ' + sky.clock()); } else say('Only the host can change the time'); }
   keys.add(e.code); if (running && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); });
 addEventListener('keyup', e => keys.delete(e.code));
@@ -256,6 +266,7 @@ const k = (...c) => c.some(x => keys.has(x)) ? 1 : 0;
 const clamp1 = v => Math.max(-1, Math.min(1, v));
 function readInput() {                                        // keyboard and controller add together
   const g = pollGamepad();
+  if (god.on) return { pitch: 0, roll: 0, yaw: 0, throttle: 0, throttleAbs: undefined, fire: 0, rocket: 0 };
   return {
     pitch: clamp1(k('KeyS', 'ArrowDown') - k('KeyW', 'ArrowUp') + g.pitch) * (flight.invert ? -1 : 1),       // S / down arrow / stick back pulls the nose up (reversed if inverted)
     roll: clamp1(k('KeyD', 'ArrowRight') - k('KeyA', 'ArrowLeft') + g.roll),
@@ -321,7 +332,7 @@ function step(t, dt) {
       const msgs = [], why = systems(p, dt, msgs, t);                  // engine, fuel, fire
       if (p === me) msgs.forEach(say);
       if (why) goDown(p, null, why);
-      const inp = p === me ? readInput() : null, crash = p === me ? flyPlayer(p, inp, dt) : flyBot(p, planes, t, dt);
+      const inp = p === me ? readInput() : null, crash = p === me ? (god.on ? null : flyPlayer(p, inp, dt)) : flyBot(p, planes, t, dt);
       if (inp && inp.rocket) fireRocket(p, t);
       if (p.event) { if (p === me) say(p.event + (overOwnField(p.team, p.pos.x, p.pos.z) ? '. Roll to a stop to repair and refuel' : '')); p.event = null; }
       if (p === me && !p.onGround && !p.dying && weather.turbulence > 0.01) {                      // rough air: the aircraft is shaken about, as in Home Skies 1917
@@ -498,6 +509,15 @@ try { const v = parseFloat(localStorage.getItem('woi-camease')); if (v >= 0 && v
 function setCamEase(v) { camEase = THREE.MathUtils.clamp(v, 0, 1); try { localStorage.setItem('woi-camease', camEase); } catch { /* no storage */ } $('camease').value = Math.round(camEase * 100); $('camease-out').textContent = Math.round(camEase * 100) + '%'; }
 function updateCamera(dt) {
   camera.up.set(0, 1, 0);
+  if (god.on) {
+    const f = (k('ArrowUp') - k('ArrowDown')), r = (k('ArrowRight') - k('ArrowLeft')), u = k('PageUp', 'KeyR') - k('PageDown', 'KeyF'), v = god.speed * (k('ShiftLeft', 'ShiftRight') ? 5 : 1) * (k('ControlLeft') ? 0.2 : 1) * dt;
+    camera.rotation.set(god.pitch, god.yaw, 0, 'YXZ');
+    V.set(0, 0, -1).applyQuaternion(camera.quaternion); V2.set(1, 0, 0).applyQuaternion(camera.quaternion);
+    god.pos.addScaledVector(V, f * v).addScaledVector(V2, r * v); god.pos.y += u * v; god.pos.y = Math.max(god.pos.y, H(god.pos.x, god.pos.z) + 1);
+    camera.position.copy(god.pos); cine = false; document.body.classList.remove('cine');
+    if (Math.abs(camera.fov - 62) > 0.1) { camera.fov = 62; camera.updateProjectionMatrix(); }
+    sky.update(dt, god.pos, camera, gfx.shadowDist); return;
+  }
   if (!me) { const a = now() * 0.03; camera.position.set(Math.sin(a) * 900, 380, 300 + Math.cos(a) * 700); camera.lookAt(0, 40, -80); }
   else if (me.alive && me.dying) {
     // cinematic: a fixed camera set ahead of and beside the falling aircraft watches it come down past the lens

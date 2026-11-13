@@ -211,3 +211,6 @@ Press **R** (gamepad right bumper) to fire a Le Prieur rocket from the interplan
 
 ## The railway
 One line crosses the Salcano bridge. East of it the line springs across the valley on a stone viaduct, then follows the mountain wall on a ledge cut into the slope (a gentle gradient, embankments and cuttings) down to the Santa Lucia railhead; west of it the line runs across the plain beneath Sabotino. Each end disappears into a stone tunnel portal. A steam train comes through every 150 seconds, alternating direction: a passenger or goods train by day, and at night the sleeper service with every window lit and a lamp on the engine. The schedule uses the wall clock, so everyone sees the same train. The line is on the minimap, with the train shown as a small marker while it runs. Trees and houses keep clear of the track (`src/world.js` plans the route, `src/railway.js` builds it).
+
+## God camera (developer)
+Press **F9** to detach the camera. The mouse looks around (the pointer is captured), the arrow keys fly it (up/down forward and back, left/right sideways), **R / F** or **PageUp / PageDown** rise and fall, **Shift** is fast, **Ctrl** is slow, and the mouse wheel changes the speed. Your aircraft is held in place and cannot be hurt while it is on; everything else carries on. Press **F9** again to return.
