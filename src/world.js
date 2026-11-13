@@ -133,7 +133,7 @@ function planBranch(sign, goals) {                                // goals: wayp
   const pts = [{ x, z, y }]; let end = 'limit', gi = 0;
   for (let i = 0; i < 160; i++) {
     let best = null; const goal = goals[gi];
-    for (let k = -5; k <= 5; k++) {
+    for (let k = -5; k <= 5; k++) {   // turn up to 0.2 rad a step (a 50 unit curve)
       const a = th + k * 0.04, qx = x + Math.cos(a) * STEP, qz = z + Math.sin(a) * STEP, g = baseH(qx, qz);
       const nx = -Math.sin(a), nz = Math.cos(a), cross = Math.abs(baseH(qx + nx * 9, qz + nz * 9) - baseH(qx - nx * 9, qz - nz * 9)) / 18;
       const away = Math.abs(qx - riverX(qz)) - riverHalf(qz);        // stay off the water, except on the bridge itself
@@ -166,7 +166,7 @@ export const rail = () => (_rail ??= buildRail());
 function buildRail() {
   const b1 = TARGETS.find(t => t.id === 'B1');
   // east: across the valley floor, then north along the hillside; west: along the foot of Sabotino and over the plain to Cormons
-  const e = planBranch(+1, [{ x: 150, z: 112 }, { x: 150, z: 62 }, { x: 128, z: -20 }, { x: 98, z: -88 }, { x: b1.x + 12, z: b1.z + 14 }]), w = planBranch(-1, [{ x: -150, z: 106 }, { x: -292, z: 94 }]);
+  const e = planBranch(+1, [{ x: 118, z: 120 }, { x: 140, z: 100 }, { x: 146, z: 72 }, { x: 142, z: 48 }, { x: 135, z: 30 }, { x: 127, z: 0 }, { x: 120, z: -40 }, { x: 100, z: -80 }, { x: 64, z: -120 }, { x: 22, z: -158 }, { x: b1.x + 14, z: b1.z + 8 }]), w = planBranch(-1, [{ x: -62, z: 124 }, { x: -120, z: 116 }, { x: -200, z: 102 }, { x: -300, z: 96 }, { x: -400, z: 98 }]);
   const east = resample(smoothPath(e.pts, 3), 2.5), west = resample(smoothPath(w.pts, 3), 2.5).reverse();
   const bridgeLen = BRIDGE.half * 2, nb = Math.round(bridgeLen / 2.5), onBridge = [];
   for (let i = 1; i < nb; i++) { const t = i / nb * 2 - 1; onBridge.push({ x: BRIDGE.x + BRIDGE.dx * BRIDGE.half * t, z: BRIDGE.z + BRIDGE.dz * BRIDGE.half * t, y: BRIDGE.y, bridge: true }); }

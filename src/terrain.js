@@ -1,6 +1,6 @@
 // Terrain, water, sky, trees and clouds for the Isonzo Front map (flat-shaded, no textures).
 import * as THREE from 'three';
-import { sst, lerp, rnd, fbm, hash2, H, riverX, riverLevel, riverHalf, inland, AIRFIELDS, TOWNS, TARGETS } from './world.js';
+import { sst, lerp, rnd, fbm, hash2, H, railDist, riverX, riverLevel, riverHalf, inland, AIRFIELDS, TOWNS, TARGETS } from './world.js';
 
 export function buildTerrain(scene) {
 const HAZE = new THREE.Color('#c9dbe6');
@@ -168,7 +168,7 @@ for (const [R, hh, colr, sd] of [[1750, 420, '#8fa9bf', 3], [2500, 620, '#a9c0d2
   const cone = new THREE.ConeGeometry(1, 1, 5); cone.translate(0, 0.5, 0);
   const ico = new THREE.IcosahedronGeometry(1, 0); ico.translate(0, 0.9, 0);
   const A = [], Bk = [];
-  const near = (x, z) => TOWNS.some(t => (x - t.x) ** 2 + (z - t.z) ** 2 < (t.r + 3) ** 2) || TARGETS.some(t => (x - t.x) ** 2 + (z - t.z) ** 2 < (t.kind === 'battery' ? 1100 : 500)) || inField(AIRFIELDS.it, x, z, 150, 75) || inField(AIRFIELDS.ah, x, z, 150, 75);
+  const near = (x, z) => railDist(x, z, 10) < 9 || TOWNS.some(t => (x - t.x) ** 2 + (z - t.z) ** 2 < (t.r + 3) ** 2) || TARGETS.some(t => (x - t.x) ** 2 + (z - t.z) ** 2 < (t.kind === 'battery' ? 1100 : 500)) || inField(AIRFIELDS.it, x, z, 150, 75) || inField(AIRFIELDS.ah, x, z, 150, 75);
   for (let i = 0; i < 130000; i++) {
     const x = (rnd() - 0.5) * 2800, z = (rnd() - 0.5) * 1900, y = H(x, z);
     const e = 2, ny = 1 / Math.hypot((H(x + e, z) - H(x - e, z)) / (2 * e), 1, (H(x, z + e) - H(x, z - e)) / (2 * e));

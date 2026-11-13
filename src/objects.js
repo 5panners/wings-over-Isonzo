@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { makeFlagMesh, registerArm } from './flags.js';
 import { makeRocket } from './guns.js';
-import { lerp, rnd, H, riverX, riverLevel, riverHalf, sst, AIRFIELDS, TOWNS, SECTORS, TARGETS } from './world.js';
+import { lerp, rnd, H, railDist, riverX, riverLevel, riverHalf, sst, AIRFIELDS, TOWNS, SECTORS, TARGETS } from './world.js';
 
 export const TEAM = { it: '#2f7fe0', ah: '#d8362c', n: '#f2ead0', obj: '#ffb21e' };
 const mats = {};
@@ -207,7 +207,7 @@ function house(w, h, d, wc, rc) { const g = G(mk(B(w, h, d), wc, 0, h / 2, 0)); 
 function village(scene, t) {
   for (let i = 0; i < t.k; i++) {
     const a = rnd() * 6.28, r = Math.sqrt(rnd()) * t.r, x = t.x + Math.cos(a) * r, z = t.z + Math.sin(a) * r * 0.8;
-    if (Math.abs(x - riverX(z)) < riverHalf(z) + 9) continue;
+    if (Math.abs(x - riverX(z)) < riverHalf(z) + 9 || railDist(x, z, 12) < 11) continue;
     const hs = house(3 + rnd() * 2.5, 2.6 + rnd() * 2.2, 4 + rnd() * 3.5, HOUSE[Math.floor(rnd() * 6)], ROOF[Math.floor(rnd() * 4)]); at(hs, x, H(x, z) - 0.3, z, Math.floor(rnd() * 4) * 0.4 + (rnd() > 0.5 ? 1.57 : 0)); scene.add(hs);
   }
   const y = H(t.x, t.z) - 0.3; // church + campanile
@@ -320,8 +320,7 @@ export function buildObjects(scene) {
       const hole = (cx, r, cy) => { const p = new THREE.Path(); p.moveTo(cx - r, cy - 30); p.lineTo(cx - r, cy); p.absarc(cx, cy, r, Math.PI, 0, true); p.lineTo(cx + r, cy - 30); p.closePath(); return p; };
       for (const cx of [-41, -34, -27, 27, 34, 41]) { const p = new THREE.Path(); p.absarc(cx, -6.5, 2.7, 0, Math.PI * 2, false); sh.holes.push(p); }
       const geo = new THREE.ExtrudeGeometry(sh, { depth: 4.4, bevelEnabled: false, curveSegments: 7 }); geo.translate(0, 0, -2.2);
-      const g = G(mk(geo, '#d8cfb8'), mk(B(L * 2, 0.5, 5), '#bfb59c', 0, 0.25, 0), mk(B(L * 2 + 60, 0.25, 1.6), '#4a433a', 0, 0.6, 0));
-      const tr = train(5); tr.rotation.y = Math.PI / 2; tr.position.set(14, 0.3, 0); g.add(tr);
+      const g = G(mk(geo, '#d8cfb8'), mk(B(L * 2, 0.5, 5), '#bfb59c', 0, 0.25, 0));
       at(g, t.x, lvl + 24.6, t.z, -0.28); scene.add(g);
     } else if (t.kind === 'battery') {
       const mortar = t.id === 'B2';

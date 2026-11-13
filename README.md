@@ -208,3 +208,6 @@ Third-party code in `vendor/` (three.js, Trystero) is MIT licensed; see the lice
 
 ## Rockets and the supply balloon
 Press **R** (gamepad right bumper) to fire a Le Prieur rocket from the interplane struts (8 carried, 4 per side). They hit hard: 70 damage to aircraft, 100 to an airship gas cell. A single supply balloon of rockets appears at a random time and place, marked by a pulsing golden outline around the balloon; fly through it to reload.
+
+## The railway
+One line crosses the Salcano bridge. East of it the line springs across the valley on a stone viaduct, then follows the mountain wall on a ledge cut into the slope (a gentle gradient, embankments and cuttings) down to the Santa Lucia railhead; west of it the line runs across the plain beneath Sabotino. Each end disappears into a stone tunnel portal. A steam train comes through every 150 seconds, alternating direction: a passenger or goods train by day, and at night the sleeper service with every window lit and a lamp and beam on the engine. The schedule uses the wall clock, so everyone sees the same train. The line is on the minimap, with the train shown as a small marker while it runs. Trees and houses keep clear of the track (`src/world.js` plans the route, `src/railway.js` builds it).

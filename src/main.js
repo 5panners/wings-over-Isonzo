@@ -7,6 +7,7 @@ import { AIRFIELDS, SECTORS, riverX, HALF, HALF_X, H, coastZ, coastW, coastE } f
 import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, BOT_LEVELS, botSettings, COLLIDE_RADIUS, overOwnField, flight, setFlight, FLIGHT_DEFAULT, ZONE_TEXT, zoneAt, takeHit, systems, startDying, flyPlayer, flyBot, flyRemote, hooks } from './plane.js';
 import { updateFlags } from './flags.js';
 import { createWeather, WEATHER } from './weather.js';
+import { createRailway } from './railway.js';
 import { createPickup, ROCKETS_PER_PACK } from './pickup.js';
 import { createFront, POINT, CELLS, CELL_HP, SIDE_NAME, NATION, TEAM_TINT, SHIP_LEN } from './front.js';
 import { connect } from './net.js';
@@ -35,6 +36,7 @@ const sky = createDayNight(scene, { sun, hemi });   // sky.tod = hour of day, sk
 const weather = createWeather(scene, { sky, camera, clouds, fx: { light: (p, peak, life, range) => flashLight(p, peak, life, range, 2, '#cfe0ff'), thunder: (d, delay) => thunderSound(d, delay), rain: l => setRain(l), gusts: l => setGusts(l) } });
 const pickup = createPickup(scene);          // the one rocket pickup, see pickup.js
 buildObjects(scene).setMode({ map: false, rings: false, flights: [], lineup: false });
+const railway = createRailway(scene, { puff: (p, c, sz, life, rise, spread) => puff(p, c, sz, life, rise, spread) });          // the line, its viaducts and the trains
 { const s = sun.shadow.camera; s.near = 100; s.far = 4500; }   // its width is set every frame by sky.update
 const hud = $('hud'), ctx = hud.getContext('2d');
 function resize() {
@@ -297,6 +299,7 @@ function frame() {
     updateOthers(list);
   }
   updateEffects(dt);
+  railway.update(dt, t, sky.night);
   updateFlags(t, dt);
   updateWindows(sky.night, sky.tod);
   updateNavLights(sky.night, t);
@@ -605,6 +608,8 @@ function drawHud(t) {
   ctx.closePath(); ctx.fill(); ctx.restore();
   ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1; ctx.strokeRect(cx - RX, cy - RZ, RX * 2, RZ * 2);
   ctx.strokeStyle = '#35c9ae'; ctx.lineWidth = 2.5; ctx.beginPath(); for (let z = -860; z <= 560; z += 30) { const q = m(riverX(z), z); z === -860 ? ctx.moveTo(...q) : ctx.lineTo(...q); } ctx.stroke();
+  { const L = railway.line(); ctx.strokeStyle = 'rgba(25,22,20,.85)'; ctx.lineWidth = 1.4; ctx.beginPath(); L.forEach((p, i) => { const q = m(p.x, p.z); i ? ctx.lineTo(...q) : ctx.moveTo(...q); }); ctx.stroke();
+    if (railway.state.active) { const q = m(railway.state.pos.x, railway.state.pos.z); ctx.fillStyle = '#f2ead0'; ctx.fillRect(q[0] - 2, q[1] - 2, 4, 4); } }
   for (const key of ['it', 'ah']) { const q = m(AIRFIELDS[key].x, AIRFIELDS[key].z); ctx.fillStyle = TEAM_COLOR[key]; ctx.fillRect(q[0] - 6, q[1] - 3, 12, 6); }
   ctx.fillStyle = 'rgba(255,255,255,.55)'; for (const s of SECTORS) { const q = m(s.x, s.z); ctx.beginPath(); ctx.arc(q[0], q[1], 2.5, 0, 6.3); ctx.fill(); }
   if (mode === 'front') {
@@ -800,6 +805,6 @@ showVolumes();
 applyGfx(false);
 $('form').addEventListener('submit', e => { e.preventDefault(); if (running) applyLiveSetup(); else start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
-window.__woi = { pickup, fireRocket, ROCKET, hitStats, glowCount: () => glowMesh.count, weather, shellStats, LIGHTS, front, get mode() { return mode; }, setMode, flight, shadowExtent: () => sun.shadow.camera.right, gfx, renderer, explode, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
+window.__woi = { railway, pickup, fireRocket, ROCKET, hitStats, glowCount: () => glowMesh.count, weather, shellStats, LIGHTS, front, get mode() { return mode; }, setMode, flight, shadowExtent: () => sun.shadow.camera.right, gfx, renderer, explode, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
 frame();
 if (params.get('autostart')) start();
