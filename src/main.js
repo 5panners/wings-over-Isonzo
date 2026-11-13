@@ -218,7 +218,7 @@ function onMessage(m, from) {
       if (m.d) { sky.rate = +m.d[1] || 0; const off = Math.abs(sky.tod - m.d[0]); if (Math.min(off, 24 - off) > 0.03) sky.tod = +m.d[0] || 0; }   // the host's clock is everyone's clock
     }
   } else if (m.t === 'x') {                                   // someone's bullet hit a plane we own
-    const p = planes.get(m.to); if (p && p.local) damage(p, Math.min(+m.d || 0, 40), m.by, ['eng', 'wingL', 'wingR', 'tail', 'fuel', 'pilot', 'body'].includes(m.z) ? m.z : undefined);
+    const p = planes.get(m.to); if (p && p.local) damage(p, Math.min(+m.d || 0, 80), m.by, ['eng', 'wingL', 'wingR', 'tail', 'fuel', 'pilot', 'body'].includes(m.z) ? m.z : undefined);
   } else if (m.t === 'k') onKill(m.v, m.by, m.c);
   else if (m.t === 'rk') { bullets.push({ p: new THREE.Vector3(...m.o), v: new THREE.Vector3(...m.v), life: ROCKET.life, by: m.by, team: m.team, real: false, rocket: true }); rocketSound(new THREE.Vector3(...m.o).distanceTo(camera.position)); }   // somebody else's rocket, shown here
   else if (m.t === 'pc' && isHost()) pickup.clear(now());                       // somebody took the pickup
@@ -437,7 +437,7 @@ function hitBurst(pos, mine, t) {
   if (t - lastHitLight > (mine ? 0.05 : 0.2)) { lastHitLight = t; hitStats.lit++; flashLight(pos, mine ? 150 : 80, 0.12, 26, 1, '#ffc27a'); }
 }
 // ---- rockets (Le Prieur): eight on the struts, loaded by flying through the pickup; R fires one ----
-const ROCKET = { speed: 175, life: 1.6, dmg: 40, airDmg: 170, r: 5 };          // a hit does 40 to an aircraft and 170 to an airship gas cell (which holds 320)
+const ROCKET = { speed: 175, life: 1.6, dmg: 70, airDmg: 100, r: 5 };          // a hit does 70 to an aircraft (two kill) and 100 to an airship gas cell (which holds 320)
 let nextRocketAt = 0;
 function fireRocket(p, t) {
   if (!p.alive || p.dying || p.onGround || p.rockets <= 0 || t < nextRocketAt) return;
