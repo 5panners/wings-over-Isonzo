@@ -89,6 +89,10 @@ Aircraft in view carry a marker with name and distance: a diamond for enemies, a
 
 Each side flies its own flag, built from flat-coloured cells (no textures): Italy's tricolore with the crowned Savoy shield, and the Austro-Hungarian imperial war ensign, red-white-red with the Austrian and Hungarian arms under a crown (simplified to fit the grid). They are on the airfield flagpoles, and the capture point flies the flag of whoever holds it, or plain white if nobody does. The flags wave in a wind that drifts slowly and gusts, and the airfield windsocks stream downwind and droop when it is light. The wind is cosmetic and does not affect flight.
 
+### Lit windows
+
+Every house has windows. By day they are dark glass; at night about three quarters of the houses have lit rooms, which come on one by one through the dusk (in warm yellows and oranges), and about half of the houses go dark again late in the evening, between about 22:30 and 04:30. All the windows are drawn as a single instanced mesh, so they cost almost nothing.
+
 ### Guns and muzzle flash
 
 Every gun flashes when it fires, and the flash lights up the hull, wings and ground around it for a moment. Aircraft carry twin machine guns on the nose that fire alternately, so the flashes alternate left and right. Each airship has four gun mounts, two on top and two slung under the gondolas: twin guns in cooling jackets with an ammunition drum and shield, a gunner at each, and a pedestal and gun ring or blister. Gunners swing their guns to follow the target between bursts, and the guns recoil with each shot.

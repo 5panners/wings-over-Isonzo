@@ -41,6 +41,7 @@ export function createDayNight(scene, { sun: light, hemi }) {
   let lastE = 9, shadowExtent = 0;
 
   const api = {
+    night: 0,          // 0 by day .. 1 in full darkness
     shadows: true,     // graphics option
     tod: 6,            // hour of day, 0..24
     rate: 12,          // game hours per real hour (1 = real time, 0 = stopped)
@@ -49,7 +50,7 @@ export function createDayNight(scene, { sun: light, hemi }) {
     update(dt, focus, camera, extent = 260) {
       api.tod = (api.tod + api.rate * dt / 3600 + 24) % 24;
       arc(api.tod - 12, sunDir); arc(api.tod - 24.6, moonDir);      // moon peaks a little after midnight
-      const e = sunDir.y, d = sst(-0.05, 0.35, e), n = sst(0.03, -0.26, e);
+      const e = sunDir.y, d = sst(-0.05, 0.35, e), n = sst(0.03, -0.26, e); api.night = n;
       // the shared light: sun while it is up, otherwise the moon
       const bySun = e > 0, dir = bySun ? sunDir : moonDir;
       if (bySun) { light.color.copy(lowSun).lerp(highSun, sst(0, 0.4, e)); light.intensity = 2.6 * sst(0, 0.14, e); }

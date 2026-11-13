@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { buildTerrain } from './terrain.js';
 import { createDayNight } from './daynight.js';
-import { buildObjects } from './objects.js';
+import { buildObjects, updateWindows } from './objects.js';
 import { AIRFIELDS, SECTORS, riverX, HALF, HALF_X, H, coastZ, coastW, coastE } from './world.js';
 import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, BOT_LEVELS, botSettings, COLLIDE_RADIUS, overOwnField, flight, setFlight, FLIGHT_DEFAULT, ZONE_TEXT, zoneAt, takeHit, systems, startDying, flyPlayer, flyBot, flyRemote, hooks } from './plane.js';
 import { updateFlags } from './flags.js';
@@ -261,6 +261,7 @@ function frame() {
   }
   updateEffects(dt);
   updateFlags(t, dt);
+  updateWindows(sky.night, sky.tod);
   updateWater(t, sun, hemi);
   updateCamera(dt);
   renderer.render(scene, camera);

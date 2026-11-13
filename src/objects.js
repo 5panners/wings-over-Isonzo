@@ -113,7 +113,43 @@ function ring(r, h, color, y0 = 0, wall = 0.12) {
 
 // ============ buildings ============
 const HOUSE = ['#efe3c6', '#e8d5ae', '#f2e9d8', '#e6c9a0', '#dcc7b0', '#f0dcc0'], ROOF = ['#c2603a', '#b5532f', '#cc6e44', '#a94a2c'];
-function house(w, h, d, wc, rc) { const g = G(mk(B(w, h, d), wc, 0, h / 2, 0)); const r = mk(prism(w * 1.1, w * 0.42, d * 1.08), rc, 0, h, 0); g.add(r); return g; }
+// ---- windows: one instanced mesh for the whole map. By day they are dark glass; at night some glow. ----
+// Each house gets a few lit rooms: they come on at their own point in the dusk, and about half go dark again late in the evening.
+const WIN = [], winRand = (() => { let s = 20171024; return () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296; })();   // its own random stream, so adding windows moves nothing else
+function addWindows(g, w, h, d) {
+  const occupied = winRand() < 0.78, on = 0.12 + winRand() * 0.55, off = winRand() < 0.5 ? 22.5 + winRand() * 5 : 99;
+  const walls = [[w, d / 2, 0, 0], [w, -d / 2, Math.PI, 0], [d, w / 2, Math.PI / 2, 1], [d, -w / 2, -Math.PI / 2, 1]];       // [width, offset, yaw, side wall?]
+  for (const [width, off2, yaw, side] of walls) {
+    const n = Math.max(1, Math.floor(width / 1.9));
+    for (let row = 0; row < (h >= 4 ? 2 : 1); row++) for (let i = 0; i < n; i++) {
+      const u = -width / 2 + (i + 0.5) * width / n, y = row === 0 ? 1.25 : 3.15, out = off2 + Math.sign(off2) * 0.02;
+      const m = new THREE.Matrix4().compose(side ? new THREE.Vector3(out, y, u) : new THREE.Vector3(u, y, out), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw), new THREE.Vector3(0.55, 0.75, 1));
+      WIN.push({ g, m, lit: occupied && winRand() < 0.8, on, off, warm: Math.floor(winRand() * 3) });
+    }
+  }
+}
+let winMesh = null, winKey = -1;
+const GLASS_DAY = new THREE.Color('#56677a'), GLASS_NIGHT = new THREE.Color('#0d121a'), WARM = ['#ffc766', '#ffb347', '#ffe0a0'].map(c => new THREE.Color(c)), CC = new THREE.Color();
+function buildWindows(scene) {
+  scene.updateMatrixWorld(true);
+  winMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial(), WIN.length);
+  const M = new THREE.Matrix4(); WIN.forEach((win, i) => { winMesh.setMatrixAt(i, M.multiplyMatrices(win.g.matrixWorld, win.m)); winMesh.setColorAt(i, GLASS_DAY); });
+  winMesh.frustumCulled = false; scene.add(winMesh);
+}
+// night: 0 (day) .. 1 (dark), from the day-night cycle; tod: hour of the day
+export function updateWindows(night, tod) {
+  if (!winMesh) return;
+  const key = Math.round(night * 40) * 1000 + Math.floor(tod * 6); if (key === winKey) return; winKey = key;
+  const t = tod < 12 ? tod + 24 : tod;                                                  // hours after midnight count on from 24
+  CC.copy(GLASS_DAY).lerp(GLASS_NIGHT, night); const gr = CC.r, gg = CC.g, gb = CC.b;
+  WIN.forEach((win, i) => {
+    const k = win.lit && !(t >= win.off && t < 29.5) ? Math.min(1, Math.max(0, (night - win.on) / 0.08)) : 0;
+    const warm = WARM[win.warm];
+    winMesh.setColorAt(i, k > 0 ? CC.setRGB(gr + (warm.r - gr) * k, gg + (warm.g - gg) * k, gb + (warm.b - gb) * k) : CC.setRGB(gr, gg, gb));
+  });
+  winMesh.instanceColor.needsUpdate = true;
+}
+function house(w, h, d, wc, rc) { const g = G(mk(B(w, h, d), wc, 0, h / 2, 0)); const r = mk(prism(w * 1.1, w * 0.42, d * 1.08), rc, 0, h, 0); g.add(r); addWindows(g, w, h, d); return g; }
 function village(scene, t) {
   for (let i = 0; i < t.k; i++) {
     const a = rnd() * 6.28, r = Math.sqrt(rnd()) * t.r, x = t.x + Math.cos(a) * r, z = t.z + Math.sin(a) * r * 0.8;
@@ -270,6 +306,7 @@ export function buildObjects(scene) {
   const LU = { x: -70, y: 150, z: -40 };
   ['avorio', 'drachen', 'caquot'].forEach((ty, i) => { const b = balloon(ty); b.position.set(LU.x + (i - 1) * 27, LU.y, LU.z + (i - 1) * 4); b.rotation.y = -1.25; b.scale.setScalar(1.25); lineup.add(b); lineup.add(rod([b.position.x, LU.y - 13.5, b.position.z], [b.position.x + 4, LU.y - 80, b.position.z + 3], 0.08, '#3d3a34')); });
 
+  buildWindows(scene);                                      // after every building has been placed
   const KIND = { spad: SPAD, nieuport: NIEUPORT, hanriot: HANRIOT, albatros: ALBATROS, phonix: PHONIX, caproni: CAPRONI };
   return {
     LU,
