@@ -13,12 +13,13 @@ export const ACTIONS = [
   { key: 'throttleUp', label: 'Throttle up', kind: 'button', prompt: 'press the button' },
   { key: 'throttleDown', label: 'Throttle down', kind: 'button', prompt: 'press the button' },
   { key: 'fire', label: 'Fire guns', kind: 'button', prompt: 'press the button or trigger' },
+  { key: 'rocket', label: 'Fire rockets', kind: 'button', prompt: 'press the button' },
 ];
 // Layout for pads the browser reports as "standard" (Xbox / PlayStation style):
 // left stick pitch + roll, right stick rudder + throttle, right trigger fires.
 const STANDARD = {
   pitch: { kind: 'axis', index: 1 }, roll: { kind: 'axis', index: 0 }, yaw: { kind: 'axis', index: 2 },
-  throttle: { kind: 'axis', index: 3, invert: true }, fire: { kind: 'button', index: 7 },
+  throttle: { kind: 'axis', index: 3, invert: true }, fire: { kind: 'button', index: 7 }, rocket: { kind: 'button', index: 5 },
   throttleUp: { kind: 'button', index: 12 }, throttleDown: { kind: 'button', index: 13 },
 };
 
@@ -73,7 +74,7 @@ export function pollGamepad() {
   const v = {}; for (const a of ACTIONS) v[a.key] = readAction(a);
   const lever = cfg.bind.throttle?.lever && v.throttle !== null;
   return {
-    pitch: v.pitch || 0, roll: v.roll || 0, yaw: v.yaw || 0, fire: (v.fire || 0) > 0.3,
+    pitch: v.pitch || 0, roll: v.roll || 0, yaw: v.yaw || 0, fire: (v.fire || 0) > 0.3, rocket: (v.rocket || 0) > 0.3,
     throttle: (lever ? 0 : v.throttle || 0) + (v.throttleUp || 0) - (v.throttleDown || 0),
     throttleAbs: lever ? v.throttle : null,
   };

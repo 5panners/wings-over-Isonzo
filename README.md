@@ -205,3 +205,6 @@ To add an aircraft, add an entry to `TYPES` in `src/plane.js` with a model build
 Balloon sectors and ground targets are on the map as scenery only; capture zones, bombing, landing, and touch controls are still to come.
 
 Third-party code in `vendor/` (three.js, Trystero) is MIT licensed; see the licence files there.
+
+## Rockets and the supply balloon
+Press **R** (gamepad right bumper) to fire a Le Prieur rocket from the interplane struts (8 carried, 4 per side). They hit hard: 40 damage to aircraft, 170 to an airship gas cell. A single supply balloon of rockets appears at a random time and place, marked by a pulsing golden outline, halo and rings; fly through it to reload. Enemy airship gas cells (the hit zones) carry the same pulsing aura.

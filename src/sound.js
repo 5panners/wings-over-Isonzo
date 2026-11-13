@@ -12,6 +12,7 @@ export const CHANNELS = [
   { key: 'thunder', label: 'Thunder', hint: 'Thunder rolling in after the lightning, later the further away the strike' },
   { key: 'guns', label: 'Guns', hint: 'Your guns and everyone else\'s' },
   { key: 'jingle', label: 'Capture jingles', hint: 'The fanfare when your side takes the point, and the sad phrase when it is lost' },
+  { key: 'rockets', label: 'Rockets', hint: 'Rockets launching and streaking away, and the chime of the rocket pickup' },
   { key: 'cannons', label: 'Airship cannons', hint: 'The heavy guns on the airships, and their shells bursting' },
   { key: 'hits', label: 'Hits', hint: 'Rounds striking your aircraft, and your rounds striking home' },
   { key: 'booms', label: 'Explosions', hint: 'Crashes and aircraft blowing up' },
@@ -219,6 +220,17 @@ export function thunderSound(dist, delay = 0) {
   const n = 4 + Math.floor(Math.random() * 3);
   for (let i = 0; i < n; i++) burst(bus.thunder, 1.4 + Math.random() * 2, 'lowpass', 300 + Math.random() * 260 - dist * 0.12, 45, (0.62 - i * 0.07) * v * (0.6 + Math.random() * 0.6), d + 0.1 + i * 0.34 + Math.random() * 0.35);
 }
+// A Le Prieur rocket leaving its tube: a crack of ignition, then a long hissing roar that falls away.
+export function rocketSound(dist) {
+  if (!ctx) return; const v = Math.max(0.12, 1 / (1 + (dist / 160) * (dist / 160)));
+  burst(bus.rockets, 0.1, 'highpass', 4200, 1600, 0.7 * v); tone(bus.rockets, 0.14, 'sine', 210, 60, 0.7 * v);
+  burst(bus.rockets, 1.0, 'bandpass', 2400, 700, 0.55 * v, 0.03); burst(bus.rockets, 1.3, 'lowpass', 900, 160, 0.5 * v, 0.03);
+}
+// The pickup: a bright two-note chime.
+export function pickupSound() {
+  if (!ctx) return; tone(bus.rockets, 0.5, 'sine', 880, 880, 0.35); tone(bus.rockets, 0.5, 'triangle', 880, 880, 0.12);
+  tone(bus.rockets, 0.7, 'sine', 1320, 1320, 0.32, 0.14); tone(bus.rockets, 0.7, 'triangle', 1320, 1320, 0.1, 0.14);
+}
 export function boomSound(dist) {
   if (!ctx) return; const v = Math.max(0.12, near(dist * 0.4));
   burst(bus.booms, 1.4, 'lowpass', 900, 50, 0.9 * v); tone(bus.booms, 0.5, 'sine', 90, 30, 0.5 * v);
@@ -236,6 +248,7 @@ export function previewSound(key) {
   else if (key === 'rain' && rainNodes) { const t = ctx.currentTime; for (const [g, a] of [[rainNodes[0], 0.3], [rainNodes[1], 0.28]]) { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(a, t + 0.7); g.gain.setValueAtTime(a, t + 2.0); g.gain.linearRampToValueAtTime(0, t + 3.0); } }
   else if (key === 'gusts' && gustNode) { const t = ctx.currentTime; gustNode.gain.cancelScheduledValues(t); gustNode.gain.setValueAtTime(0, t); gustNode.gain.linearRampToValueAtTime(0.5, t + 1.2); gustNode.gain.setValueAtTime(0.5, t + 2.6); gustNode.gain.linearRampToValueAtTime(0, t + 4.2); }
   else if (key === 'thunder') { thunderSound(150, 0); later(() => thunderSound(900, 0.3), 3800); }
+  else if (key === 'rockets') { pickupSound(); later(() => rocketSound(0), 900); later(() => rocketSound(60), 1500); }
   else if (key === 'hits') { hitTakenSound(); later(hitScoredSound, 350); later(hitTakenSound, 700); }
   else if (key === 'booms') boomSound(120);
   else if (key === 'master') { for (let i = 0; i < 4; i++) later(() => gunSound(0, true), i * 90); later(() => cannonSound(40), 450); later(() => boomSound(120), 1100); }

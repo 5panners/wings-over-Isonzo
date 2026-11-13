@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { makeFlagMesh, registerArm } from './flags.js';
+import { makeRocket } from './guns.js';
 import { lerp, rnd, H, riverX, riverLevel, riverHalf, sst, AIRFIELDS, TOWNS, SECTORS, TARGETS } from './world.js';
 
 export const TEAM = { it: '#2f7fe0', ah: '#d8362c', n: '#f2ead0', obj: '#ffb21e' };
@@ -47,6 +48,13 @@ export function biplane(o) {
     g.add(mk(B(0.1, 1.0, 0.55), o.fus, 0, 0.55, -1.62));                                   // the fixed fin in front of the rudder
     const ru = new THREE.Group(); ru.position.set(0, 0.55, -1.88); const rd = rudder(side, 1.05, 0.8); rd.position.z = -0.4; ru.add(rd); g.add(ru); ctl.rud = ru;
     g.userData.ctl = ctl;
+    // Le Prieur rockets: two on each of the two interplane struts, on both sides, 8 in all. Slot i holds one rocket; plane.js shows the loaded ones.
+    const rockets = [], rocketPos = [];
+    for (const [ring, zs] of [[0, [1.35, 1.6]], [1, [0.55, 0.7]]]) for (const lo of [0, 1]) for (const sx of [1, -1]) {      // slot order: front strut high (right, left), front low, rear high, rear low
+      const t = lo ? 0.3 : 0.72, x = sx * (sp * 0.33 + 0.14), y = -0.4 + 1.42 * t, z = zs[0] + (zs[1] - zs[0]) * t + 0.42;
+      const r = makeRocket(); r.position.set(x, y, z); g.add(r); rockets.push(r); rocketPos.push(new THREE.Vector3(x, y, z + 0.6));
+    }
+    g.userData.rockets = rockets; g.userData.rocketPos = rocketPos;
   } else g.add(at(rudder(side, 1.05, 0.8), 0, 0.55, -2.25));
   for (const sx of [-1, 1]) { const w = mk(Cy(0.36, 0.36, 0.14, 8), '#2b2b2b', sx * 0.75, -1.15, 1.6); w.rotation.z = Math.PI / 2; g.add(w, rod([sx * 0.35, -0.4, 1.9], [sx * 0.7, -1.15, 1.6], 0.05, '#5a3d22'), rod([sx * 0.35, -0.4, 1.2], [sx * 0.7, -1.15, 1.6], 0.05, '#5a3d22')); }
   g.add(rod([-0.75, -1.15, 1.6], [0.75, -1.15, 1.6], 0.05, '#333'), rod([0, -0.2, -2.0], [0, -0.55, -2.3], 0.05, '#5a3d22'));

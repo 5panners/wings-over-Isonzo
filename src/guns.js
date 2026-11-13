@@ -8,7 +8,7 @@ const flashMaterial = new THREE.MeshBasicMaterial({ vertexColors: true, fog: fal
 
 // A pile of primitives, each with its own colour and transform, merged into one geometry.
 const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), E = new THREE.Euler(), P = new THREE.Vector3(), S = new THREE.Vector3();
-class Parts {
+export class Parts {
   constructor() { this.pos = []; this.col = []; }
   add(geo, color, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) {
     const g = geo.index ? geo.toNonIndexed() : geo.clone();
@@ -28,6 +28,18 @@ class Parts {
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
 const cyl = (r0, r1, h, n = 8) => new THREE.CylinderGeometry(r0, r1, h, n);
 const HALF = Math.PI / 2;
+
+// ---- a Le Prieur rocket: the black-powder rocket WW1 pilots fixed to the interplane struts and fired electrically at balloons and airships ----
+// Along +z, about 1.2 long, centred on its middle: a cardboard-and-brass body, a pointed steel head, three small fins and the tube it sits in.
+let rocketGeo = null;
+export function makeRocket() {
+  rocketGeo ??= new Parts()
+    .add(cyl(0.062, 0.062, 0.8, 8), '#6a4a2c', 0, 0, 0.0, HALF).add(cyl(0.066, 0.066, 0.06, 8), '#b8924a', 0, 0, -0.18, HALF).add(cyl(0.066, 0.066, 0.06, 8), '#b8924a', 0, 0, 0.2, HALF)
+    .add(new THREE.ConeGeometry(0.062, 0.3, 8), '#2a2a2a', 0, 0, 0.55, HALF)
+    .add(box(0.012, 0.2, 0.2), '#3a3a3a', 0, 0, -0.5).add(box(0.2, 0.012, 0.2), '#3a3a3a', 0, 0, -0.5)
+    .add(cyl(0.085, 0.085, 0.36, 8), '#7a7d78', 0, 0, -0.32, HALF).geometry();
+  const m = new THREE.Mesh(rocketGeo, gunMaterial); m.castShadow = true; return m;
+}
 
 // ---- muzzle flash: a hot core, a bright cone along the barrel and a wider orange one, pointing along +z ----
 let flashGeo = null;

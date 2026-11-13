@@ -7,9 +7,10 @@ import { AIRFIELDS, SECTORS, riverX, HALF, HALF_X, H, coastZ, coastW, coastE } f
 import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, BOT_LEVELS, botSettings, COLLIDE_RADIUS, overOwnField, flight, setFlight, FLIGHT_DEFAULT, ZONE_TEXT, zoneAt, takeHit, systems, startDying, flyPlayer, flyBot, flyRemote, hooks } from './plane.js';
 import { updateFlags } from './flags.js';
 import { createWeather, WEATHER } from './weather.js';
+import { createPickup, ROCKETS_PER_PACK } from './pickup.js';
 import { createFront, POINT, CELLS, CELL_HP, SIDE_NAME, NATION, TEAM_TINT, SHIP_LEN } from './front.js';
 import { connect } from './net.js';
-import { startSound, updateSound, updateOthers, toggleMute, setMuted, isMuted, CHANNELS, getVolume, setVolume, resetVolumes, previewSound, setRain, setGusts, thunderSound, gunSound, cannonSound, crumpSound, captureJingle, lostJingle, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
+import { startSound, updateSound, updateOthers, toggleMute, setMuted, isMuted, CHANNELS, getVolume, setVolume, resetVolumes, previewSound, rocketSound, pickupSound, setRain, setGusts, thunderSound, gunSound, cannonSound, crumpSound, captureJingle, lostJingle, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
 import { pollGamepad, updateControls, initControls, toggleControls, controlsOpen } from './gamepad.js';
 
 const MAX_PER_TEAM = 6, SCORE_LIMIT = 30, RESPAWN = 5, SEND_HZ = 15;
@@ -32,6 +33,7 @@ const { sun, hemi, updateWater, clouds } = buildTerrain(scene);
 const sky = createDayNight(scene, { sun, hemi });   // sky.tod = hour of day, sky.rate = clock speed
 // weather: fair / overcast / rain / thunderstorm (or changeable); see weather.js
 const weather = createWeather(scene, { sky, camera, clouds, fx: { light: (p, peak, life, range) => flashLight(p, peak, life, range, 2, '#cfe0ff'), thunder: (d, delay) => thunderSound(d, delay), rain: l => setRain(l), gusts: l => setGusts(l) } });
+const pickup = createPickup(scene);          // the one rocket pickup, see pickup.js
 buildObjects(scene).setMode({ map: false, rings: false, flights: [], lineup: false });
 { const s = sun.shadow.camera; s.near = 100; s.far = 4500; }   // its width is set every frame by sky.update
 const hud = $('hud'), ctx = hud.getContext('2d');
@@ -167,9 +169,9 @@ function damage(p, amount, by, where) {
 // ---------------- networking ----------------
 function packState() {
   const e = [];
-  for (const p of planes.values()) if (p.local) e.push([p.id, p.name, p.team, p.type, +p.pos.x.toFixed(1), +p.pos.y.toFixed(1), +p.pos.z.toFixed(1), +p.quat.x.toFixed(3), +p.quat.y.toFixed(3), +p.quat.z.toFixed(3), +p.quat.w.toFixed(3), +p.speed.toFixed(1), Math.round(p.hp), (p.alive ? 1 : 0) | (p.firing ? 2 : 0) | (p.isBot ? 4 : 0) | (p.dying ? 8 : 0) | (p.fire ? 16 : 0) | (p.dmg.eng > 0.3 ? 32 : 0)]);
+  for (const p of planes.values()) if (p.local) e.push([p.id, p.name, p.team, p.type, +p.pos.x.toFixed(1), +p.pos.y.toFixed(1), +p.pos.z.toFixed(1), +p.quat.x.toFixed(3), +p.quat.y.toFixed(3), +p.quat.z.toFixed(3), +p.quat.w.toFixed(3), +p.speed.toFixed(1), Math.round(p.hp), (p.alive ? 1 : 0) | (p.firing ? 2 : 0) | (p.isBot ? 4 : 0) | (p.dying ? 8 : 0) | (p.fire ? 16 : 0) | (p.dmg.eng > 0.3 ? 32 : 0), p.rockets | 0]);
   const m = { t: 's', e };
-  if (isHost()) { m.sc = [score.it, score.ah]; m.n = teamSize; m.d = [+sky.tod.toFixed(3), sky.rate]; m.b = botSettings.level; m.md = mode; m.wx = [weather.index, weather.auto ? 1 : 0]; if (mode === 'front') m.f = front.pack(); }
+  if (isHost()) { m.sc = [score.it, score.ah]; m.n = teamSize; m.d = [+sky.tod.toFixed(3), sky.rate]; m.b = botSettings.level; m.md = mode; m.wx = [weather.index, weather.auto ? 1 : 0]; m.pk = pickup.pack(); if (mode === 'front') m.f = front.pack(); }
   return m;
 }
 function onMessage(m, from) {
@@ -178,7 +180,7 @@ function onMessage(m, from) {
     flying.set(from, t);
     if (m.md && !running) heard = m;                         // settings of a battle already in progress (see start)
     for (const a of m.e) {
-      const [id, name, team, type, x, y, z, qx, qy, qz, qw, speed, hp, flags] = a;
+      const [id, name, team, type, x, y, z, qx, qy, qz, qw, speed, hp, flags, rk] = a;
       if (id === me?.id || !TYPES[type]) continue;
       let p = planes.get(id);
       if (p && p.local) { if (isHost()) continue; }             // we are the authority for our own bots
@@ -188,19 +190,22 @@ function onMessage(m, from) {
       const alive = !!(flags & 1); p.dying = !!(flags & 8); p.fire = !!(flags & 16); p.smoke = !!(flags & 32);
       if (p.alive && !alive) explode(p.pos);
       if (!p.alive && alive) { p.pos.copy(n.pos); p.quat.copy(n.quat); p.spawnedAt = t; }
-      p.owner = from; p.alive = alive; p.firing = !!(flags & 2); p.hp = hp; p.speed = speed; p.seen = t; p.team = team;
+      p.rockets = rk | 0; p.owner = from; p.alive = alive; p.firing = !!(flags & 2); p.hp = hp; p.speed = speed; p.seen = t; p.team = team;
     }
     if (m.sc && !isHost()) {
       score.it = m.sc[0]; score.ah = m.sc[1]; teamSize = m.n; if (m.b != null) botSettings.level = THREE.MathUtils.clamp(m.b | 0, -1, BOT_LEVELS.length - 1);
       if ((m.md === 'front' || m.md === 'dogfight') && m.md !== mode) setMode(m.md);    // the host's mode is everyone's mode
       if (m.f && mode === 'front') front.unpack(m.f, t);
+      if (m.pk !== undefined) pickup.unpack(m.pk);                                // the one pickup is the host's
       if (m.wx) weather.follow(m.wx[0]);                                         // the host's weather is everyone's weather
       if (m.d) { sky.rate = +m.d[1] || 0; const off = Math.abs(sky.tod - m.d[0]); if (Math.min(off, 24 - off) > 0.03) sky.tod = +m.d[0] || 0; }   // the host's clock is everyone's clock
     }
   } else if (m.t === 'x') {                                   // someone's bullet hit a plane we own
     const p = planes.get(m.to); if (p && p.local) damage(p, Math.min(+m.d || 0, 40), m.by, ['eng', 'wingL', 'wingR', 'tail', 'fuel', 'pilot', 'body'].includes(m.z) ? m.z : undefined);
   } else if (m.t === 'k') onKill(m.v, m.by, m.c);
-  else if (m.t === 'zx' && isHost() && mode === 'front') front.damage(m.s, m.c | 0, Math.min(+m.d || 0, 25), m.by);   // a player's rounds struck an airship
+  else if (m.t === 'rk') { bullets.push({ p: new THREE.Vector3(...m.o), v: new THREE.Vector3(...m.v), life: ROCKET.life, by: m.by, team: m.team, real: false, rocket: true }); rocketSound(new THREE.Vector3(...m.o).distanceTo(camera.position)); }   // somebody else's rocket, shown here
+  else if (m.t === 'pc' && isHost()) pickup.clear(now());                       // somebody took the pickup
+  else if (m.t === 'zx' && isHost() && mode === 'front') front.damage(m.s, m.c | 0, Math.min(+m.d || 0, 250), m.by);   // a player's rounds struck an airship
 }
 function onLeave(id) { flying.delete(id); for (const p of [...planes.values()]) if (p.owner === id && !p.local) { if (!p.isBot) say(`${label(p.id)} left`); removePlane(p); } }
 
@@ -239,12 +244,14 @@ function readInput() {                                        // keyboard and co
     throttle: clamp1(k('ShiftLeft', 'ShiftRight') - k('ControlLeft', 'KeyC') + g.throttle),
     throttleAbs: g.throttleAbs,
     fire: k('Space') || mouseFire || g.fire,
+    rocket: k('KeyR') || g.rocket,
   };
 }
 
 // ---------------- main loop ----------------
 let last = now();
 // frames per second, averaged over half a second, shown top right (green 50+, amber 30+, red below)
+let announcedPickup = 0;
 let fpsFrames = 0, fpsSince = performance.now();
 function countFrame() {
   fpsFrames++; const n = performance.now();
@@ -277,6 +284,8 @@ function frame() {
   updateWindows(sky.night, sky.tod);
   updateNavLights(sky.night, t);
   updateWater(t, sun, hemi);
+  { const c = pickup.current; if (c && c.id !== announcedPickup) { announcedPickup = c.id; say('A supply balloon of rockets has appeared: follow the golden glow'); } }
+  pickup.update(t, dt);
   weather.update(dt, t, isHost(), me && me.alive ? V2.copy(me.vdir).multiplyScalar(me.speed) : V2.set(0, 0, 0));
   updateCamera(dt);
   renderer.render(scene, camera);
@@ -292,7 +301,8 @@ function step(t, dt) {
       const msgs = [], why = systems(p, dt, msgs, t);                  // engine, fuel, fire
       if (p === me) msgs.forEach(say);
       if (why) goDown(p, null, why);
-      const crash = p === me ? flyPlayer(p, readInput(), dt) : flyBot(p, planes, t, dt);
+      const inp = p === me ? readInput() : null, crash = p === me ? flyPlayer(p, inp, dt) : flyBot(p, planes, t, dt);
+      if (inp && inp.rocket) fireRocket(p, t);
       if (p.event) { if (p === me) say(p.event + (overOwnField(p.team, p.pos.x, p.pos.z) ? '. Roll to a stop to repair and refuel' : '')); p.event = null; }
       if (p === me && !p.onGround && !p.dying && weather.turbulence > 0.01) {                      // rough air: the aircraft is shaken about, as in Home Skies 1917
         const tb = weather.turbulence * flight.turb * dt;
@@ -324,11 +334,20 @@ function step(t, dt) {
     p.sync(dt);
     for (let k = 0; k < 2; k++) p.flash[k].visible = p.alive && p.flashSide === k && t - p.flashT < 0.05;       // each flash shows for a moment after its shot
   }
+  if (isHost()) pickup.host(t);
+  if (me && pickup.touching(me)) {                                      // flew into the glow: rockets loaded
+    me.rockets = ROCKETS_PER_PACK; pickupSound(); say(`Le Prieur rockets loaded: ${ROCKETS_PER_PACK}. Press R to fire`);
+    if (isHost()) pickup.clear(t); else { pickup.take(); net?.send({ t: 'pc' }, hostId()); }
+  }
   if (mode === 'front') front.update(dt, t, { host: isHost(), planes, myTeam: me?.team, level: botSettings.level, frozen: !!roundEndAt });
   // bullets
   for (let i = bullets.length - 1; i >= 0; i--) {
     const b = bullets[i]; b.life -= dt;
     V.copy(b.v).multiplyScalar(dt);
+    if (b.rocket) {                                                     // a rocket burns as it flies: a hot head and a trail of smoke; it bursts on the ground
+      puff(b.p, '#ffb347', 0.9 + Math.random() * 0.5, 0.12, 0, 0.3).glow = true; puff(b.p, '#d8d4cc', 1.1 + Math.random() * 0.8, 0.9 + Math.random() * 0.5, 1.2, 0.5);
+      if (b.p.y < H(b.p.x, b.p.z) + 0.5) b.life = 0;
+    }
     let hit = null, where = null;
     if (b.real) for (const p of planes.values()) {
       if (!p.alive || p.dying || p.team === b.team) continue;
@@ -349,7 +368,7 @@ function step(t, dt) {
       if (fh) {
         if (b.real) hitBurst(BE, b.by === me?.id, t);
         if (b.real) {
-          if (isHost()) front.damage(fh.side, fh.cell, GUN.damage, b.by); else net?.send({ t: 'zx', s: fh.side, c: fh.cell, d: GUN.damage, by: b.by }, hostId());
+          if (isHost()) front.damage(fh.side, fh.cell, b.airDmg ?? GUN.damage, b.by); else net?.send({ t: 'zx', s: fh.side, c: fh.cell, d: b.airDmg ?? GUN.damage, by: b.by }, hostId());
           if (b.by === me?.id) { hitFlash = t + 0.12; hitScoredSound(); }
         }
         bullets.splice(i, 1); continue;
@@ -361,7 +380,7 @@ function step(t, dt) {
       if (hit.local) damage(hit, b.dmg ?? GUN.damage, b.by, where); else net?.send({ t: 'x', to: hit.id, by: b.by, d: b.dmg ?? GUN.damage, z: where }, hit.owner);
       if (b.by === me?.id) { hitFlash = t + 0.12; hitScoredSound(); }
     }
-    if (hit || b.life <= 0) { if (b.shell) shellBurst(b.p, !!hit); bullets.splice(i, 1); }
+    if (hit || b.life <= 0) { if (b.shell) shellBurst(b.p, !!hit); if (b.rocket) rocketBurst(b.p, !!hit); bullets.splice(i, 1); }
   }
   // round end: the host decides, everyone else follows the score it sends
   if (isHost()) {
@@ -400,6 +419,23 @@ function hitBurst(pos, mine, t) {
   puff(pos, '#3a3633', 1 + Math.random(), 0.5 + Math.random() * 0.5, 2.5, 1.5);                                                                                                     // smoke
   if (t - lastHitLight > (mine ? 0.05 : 0.2)) { lastHitLight = t; hitStats.lit++; flashLight(pos, mine ? 240 : 120, 0.14, 34, 1, '#ffc27a'); }
 }
+// ---- rockets (Le Prieur): eight on the struts, loaded by flying through the pickup; R fires one ----
+const ROCKET = { speed: 175, life: 1.6, dmg: 40, airDmg: 170, r: 5 };          // a hit does 40 to an aircraft and 170 to an airship gas cell (which holds 320)
+let nextRocketAt = 0;
+function fireRocket(p, t) {
+  if (!p.alive || p.dying || p.onGround || p.rockets <= 0 || t < nextRocketAt) return;
+  nextRocketAt = t + 0.3; const slot = --p.rockets, origin = p.rocketPos[slot].clone().applyQuaternion(p.quat).add(p.pos);
+  const v = p.fwd.clone().multiplyScalar(ROCKET.speed).addScaledVector(p.vdir, p.speed * 0.75);
+  bullets.push({ p: origin, v, life: ROCKET.life, by: p.id, team: p.team, real: true, rocket: true, dmg: ROCKET.dmg, airDmg: ROCKET.airDmg, r: ROCKET.r });
+  rocketSound(0); muzzleLight(origin, 1.6); for (let i = 0; i < 5; i++) puff(origin, i < 2 ? '#fff0b0' : '#d8d4cc', 1.2 + Math.random() * 1.4, 0.3 + Math.random() * 0.5, 0.5, 1.4);
+  net?.send({ t: 'rk', o: origin.toArray(), v: v.toArray(), by: p.id, team: p.team });
+  if (p === me && p.rockets === 0) say('Out of rockets: find the glowing balloon');
+}
+function rocketBurst(pos, struck) {
+  for (let i = 0; i < 9; i++) puff(pos, ['#fff2b0', '#ffc24a', '#ff8a2a'][i % 3], 2.2 + Math.random() * 3, 0.25 + Math.random() * 0.3, 2, 4).glow = true;
+  for (let i = 0; i < 8; i++) puff(pos, i % 3 ? '#2d2a28' : '#55504a', 2 + Math.random() * 3, 1.2 + Math.random() * 1.6, 2.5, 6);
+  flashLight(pos, 800, 0.28, 90, 2, '#ffc27a'); const d = pos.distanceTo(camera.position); if (d < 420) crumpSound(d * 0.5);
+}
 // a shell going off: a dark flak puff with a hot centre, bigger and brighter if it struck something
 function shellBurst(pos, struck) {
   for (let i = 0; i < (struck ? 6 : 4); i++) puff(pos, i % 3 ? '#2d2a28' : '#55504a', 2 + Math.random() * 2.5, 1.2 + Math.random() * 1.4, 1.5, 5);
@@ -415,7 +451,7 @@ function winner() {
 
 function updateEffects(dt) {
   let n = 0;
-  for (const b of bullets) { if (n >= 500) break; Q.setFromUnitVectors(Zax, V.copy(b.v).normalize()); const sc = b.shell ? 3 : 1; tracerMesh.setMatrixAt(n++, M4.compose(b.p, Q, S3.set(sc, sc, sc))); }
+  for (const b of bullets) { if (n >= 500) break; Q.setFromUnitVectors(Zax, V.copy(b.v).normalize()); const sc = b.shell ? 3 : 1; tracerMesh.setMatrixAt(n++, M4.compose(b.p, Q, b.rocket ? S3.set(2.4, 2.4, 7) : S3.set(sc, sc, sc))); }
   tracerMesh.count = n; tracerMesh.instanceMatrix.needsUpdate = true;
   n = 0; let g = 0;
   for (let i = puffs.length - 1; i >= 0; i--) {
@@ -505,6 +541,15 @@ function drawHud(t) {
     ctx.stroke();
     ctx.fillStyle = '#fff'; ctx.shadowColor = '#000'; ctx.shadowBlur = 4; ctx.fillText(`${p.name}  ${Math.round(d)} m`, s[0], s[1] - 15);   // one unit = one metre at aircraft scale, the same scale the airspeed uses ctx.shadowBlur = 0;
   }
+  { const pp = pickup.position();                              // the rocket pickup: a pulsing marker, or an arrow at the screen edge
+    if (pp) {
+      const d = pp.distanceTo(me.pos), s = proj(pp), pulse = 0.5 + 0.5 * Math.sin(t * 5);
+      ctx.fillStyle = ctx.strokeStyle = `rgba(255, ${200 + 40 * pulse | 0}, 70, 1)`; ctx.lineWidth = 2.5;
+      if (s && s[0] > 0 && s[0] < W && s[1] > 0 && s[1] < Hh) { ctx.beginPath(); ctx.arc(s[0], s[1], 26 + 6 * pulse, 0, 6.3); ctx.stroke(); ctx.shadowColor = '#000'; ctx.shadowBlur = 4; ctx.fillStyle = '#fff'; ctx.fillText(`ROCKETS  ${Math.round(d)} m`, s[0], s[1] - 40); ctx.shadowBlur = 0; }
+      else if (!me.dying) { V.copy(pp).applyMatrix4(camera.matrixWorldInverse); const a = Math.atan2(-V.y, V.x), R = Math.min(W, Hh) * 0.4 + 46, ax = W / 2 + Math.cos(a) * R, ay = Hh / 2 + Math.sin(a) * R;
+        ctx.save(); ctx.translate(ax, ay); ctx.rotate(a); ctx.beginPath(); ctx.moveTo(17, 0); ctx.lineTo(-8, 11); ctx.lineTo(-8, -11); ctx.closePath(); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.restore();
+        ctx.fillStyle = '#fff'; ctx.shadowColor = '#000'; ctx.shadowBlur = 4; ctx.fillText(`ROCKETS ${Math.round(d)} m`, ax - Math.cos(a) * 44, ay - Math.sin(a) * 44 + 4); ctx.shadowBlur = 0; }
+    } }
   if (mode === 'front') {                                     // airships and Gradisca: a marker in view, an arrow at the edge out of view
     const mark = (pos, color, text, kind) => {
       const d = pos.distanceTo(me.pos), s = proj(pos);
@@ -549,6 +594,7 @@ function drawHud(t) {
     const g = m(POINT.x, POINT.z); ctx.strokeStyle = TEAM_TINT[front.point.owner || 'none']; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(g[0], g[1], POINT.r * K, 0, 6.3); ctx.stroke();
     for (const side of ['it', 'ah']) { const s = front.ships[side]; if (s.crashed) continue; const q = m(s.pos.x, s.pos.z); ctx.fillStyle = TEAM_COLOR[side]; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(q[0], q[1], SHIP_LEN * K / 2, 2.6, Math.atan2(s.fwd.z, s.fwd.x), 0, 6.3); ctx.fill(); ctx.stroke(); }
   }
+  { const pp = pickup.position(); if (pp) { const q = m(pp.x, pp.z), pu = 0.5 + 0.5 * Math.sin(t * 5); ctx.fillStyle = `rgba(255, 210, 74, ${0.6 + 0.4 * pu})`; ctx.beginPath(); ctx.arc(q[0], q[1], 3.5 + 2.5 * pu, 0, 6.3); ctx.fill(); ctx.strokeStyle = '#ffd24a'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(q[0], q[1], 7 + 3 * pu, 0, 6.3); ctx.stroke(); } }
   for (const p of planes.values()) { if (!p.alive) continue; const q = m(THREE.MathUtils.clamp(p.pos.x, -1490, 1490), THREE.MathUtils.clamp(p.pos.z, -850, 850)); ctx.fillStyle = p === me ? '#fff' : TEAM_COLOR[p.team]; ctx.beginPath(); ctx.arc(q[0], q[1], p === me ? 4 : 3, 0, 6.3); ctx.fill(); if (p === me) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(...q); ctx.lineTo(q[0] + me.fwd.x * 11, q[1] + me.fwd.z * 11); ctx.stroke(); } }
   // text panels
   let it = 0, ah = 0; for (const p of planes.values()) p.team === 'it' ? it++ : ah++;
@@ -561,7 +607,7 @@ function drawHud(t) {
     $('front').innerHTML = `${ship('it')}<span>${POINT.name}: <b style="color:${TEAM_TINT[pt.owner || (pct ? lead : 'none')]}">${gor}</b></span>${ship('ah')}`;
   } else $('score').innerHTML = `<span style="color:${TEAM_COLOR.it}">Italy ${score.it}</span><small>first to ${SCORE_LIMIT} · ${it} v ${ah}</small><span style="color:${TEAM_COLOR.ah}">${score.ah} Austria-Hungary</span>`;
   const bar = (v, good) => { const c = good ? (v > 0.5 ? '#9fd08a' : v > 0.2 ? '#f0c05a' : '#ff7a5c') : (v < 0.3 ? '#9fd08a' : v < 0.75 ? '#f0c05a' : '#ff7a5c'); return `<i class="bar"><i style="width:${Math.round(Math.max(0, Math.min(1, good ? v : 1 - v)) * 100)}%;background:${c}"></i></i>`; };
-  $('stats').innerHTML = `<b>${TYPES[me.type].name}</b><br>Speed ${Math.round(me.speed * 3.6)} km/h<br>Altitude ${Math.round(me.pos.y * 10)} m<br>Throttle ${Math.round(me.throttle * 100)}%`
+  $('stats').innerHTML = `<b>${TYPES[me.type].name}</b>${me.rockets ? '<br>Rockets ' + '▮'.repeat(me.rockets) + '<span style="opacity:.35">' + '▮'.repeat(ROCKETS_PER_PACK - me.rockets) + '</span>' : ''}<br>Speed ${Math.round(me.speed * 3.6)} km/h<br>Altitude ${Math.round(me.pos.y * 10)} m<br>Throttle ${Math.round(me.throttle * 100)}%`
     + `<table><tr><td>Airframe</td><td>${bar(me.hp / TYPES[me.type].hp, true)}</td></tr><tr><td>Fuel</td><td>${bar(me.fuel, true)}</td></tr>`
     + Object.keys(ZONE_TEXT).map(z => `<tr><td>${ZONE_TEXT[z][0]}</td><td>${bar(me.dmg[z], false)}</td></tr>`).join('') + '</table>'
     + (me.fire ? '<b style="color:#ff7a5c">ON FIRE</b>' : '');
@@ -737,6 +783,6 @@ showVolumes();
 applyGfx(false);
 $('form').addEventListener('submit', e => { e.preventDefault(); if (running) applyLiveSetup(); else start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
-window.__woi = { hitStats, glowCount: () => glowMesh.count, weather, shellStats, LIGHTS, front, get mode() { return mode; }, setMode, flight, shadowExtent: () => sun.shadow.camera.right, gfx, renderer, explode, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
+window.__woi = { pickup, fireRocket, ROCKET, hitStats, glowCount: () => glowMesh.count, weather, shellStats, LIGHTS, front, get mode() { return mode; }, setMode, flight, shadowExtent: () => sun.shadow.camera.right, gfx, renderer, explode, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
 frame();
 if (params.get('autostart')) start();

@@ -39,7 +39,7 @@ const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3
 const lambert = c => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
 function part(geo, mat, x, y, z) { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; return m; }
 function buildAirship(side) {
-  const g = new THREE.Group(), cellMats = [], base = [];
+  const g = new THREE.Group(), cellMats = [], base = [], auras = [];
   const tone = side === 'it' ? ['#cfcfc3', '#c2c2b6'] : ['#bcab78', '#b09f6c'];
   // envelope: one lathe per gas cell so each can be scorched on its own
   for (let i = 0; i < CELLS; i++) {
@@ -47,6 +47,10 @@ function buildAirship(side) {
     const geo = new THREE.LatheGeometry(pts, 14); geo.rotateX(Math.PI / 2);          // lathe height (y) becomes the length (z)
     const mat = lambert(tone[i % 2]); cellMats.push(mat); base.push(new THREE.Color(tone[i % 2]));
     g.add(part(geo, mat, 0, 0, 0));
+    // The hit zone's aura: a slightly larger, back-faced copy of the cell, drawn as light, so each gas cell is ringed by a glowing outline.
+    // Shrunk a little along the length (about the cell's own centre) so that neighbouring cells stay separate.
+    const am = new THREE.MeshBasicMaterial({ color: '#ffb347', fog: false, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.BackSide });
+    const aura = new THREE.Mesh(geo, am); aura.scale.set(1.24, 1.24, 0.95); aura.position.z = ((i + 0.5) / CELLS - 0.5) * L * 0.05; aura.renderOrder = 8; aura.frustumCulled = false; aura.visible = false; g.add(aura); auras.push(am);
   }
   // tail fins: vertical pair in national colours, horizontal pair plain
   const zf = -L / 2 + 22, rf = radiusAt(0.14) + 5.5, finCols = side === 'it' ? ['#2f8a45', '#f4f1e6', '#c9302a'] : ['#c9302a', '#f4f1e6', '#c9302a'];
@@ -67,7 +71,7 @@ function buildAirship(side) {
     for (const sx of [-1, 1]) { g.add(part(new THREE.CylinderGeometry(0.9, 0.9, 3.4, 8).rotateX(Math.PI / 2), dark, sx * 3.6, -R - 2.6, z - len / 2 + 2)); g.add(part(new THREE.CylinderGeometry(2.4, 2.4, 0.08, 14).rotateX(Math.PI / 2), new THREE.MeshLambertMaterial({ color: '#e8dcc0', transparent: true, opacity: 0.3 }), sx * 3.6, -R - 2.6, z - len / 2)); }
   }
   const mounts = TURRETS.map(t => { const m = buildGunMount(t[3]); m.root.position.set(t[0], t[1], t[2]); g.add(m.root); return m; });
-  return { group: g, cellMats, base, mounts };
+  return { group: g, cellMats, base, mounts, auras };
 }
 function buildPoint(scene) {
   const g = new THREE.Group(), pts = [];
@@ -92,11 +96,11 @@ export function createFront(scene, fx) {
   const point = { v: 0, owner: null, contested: false, count: { it: 0, ah: 0 }, ...buildPoint(scene) };
   const ships = {};
   for (const side of SIDES) {
-    const cfg = PATROL[side], { group, cellMats, base, mounts } = buildAirship(side);
+    const cfg = PATROL[side], { group, cellMats, base, mounts, auras } = buildAirship(side);
     // cruise height: well clear of the highest ground anywhere under the racetrack
     let top = 0; for (let a = 0; a < Math.PI * 2; a += 0.05) for (const dx of [-90, 0, 90]) for (const dz of [-90, 0, 90]) top = Math.max(top, H(cfg.cx + cfg.rx * Math.cos(a) + dx, cfg.cz + cfg.rz * Math.sin(a) + dz));
     scene.add(group);
-    ships[side] = { side, ...cfg, alt: Math.max(200, top + 95), theta: cfg.theta0, mesh: group, cellMats, base,
+    ships[side] = { side, ...cfg, alt: Math.max(200, top + 95), theta: cfg.theta0, mesh: group, cellMats, base, auras,
       cells: new Array(CELLS).fill(CELL_HP), burning: new Array(CELLS).fill(false), down: false, crashed: false, fall: 0, heading: 0, sink: 0,
       pos: new THREE.Vector3(), quat: new THREE.Quaternion(), inv: new THREE.Quaternion(), fwd: new THREE.Vector3(0, 0, 1),
       netPos: new THREE.Vector3(), netQuat: new THREE.Quaternion(), hasNet: false, lastHitBy: null, downBy: null, wreck: null,
@@ -280,6 +284,13 @@ export function createFront(scene, fx) {
           if (Math.random() < 0.6) fx.puff(p, '#2b2927', 4 + Math.random() * 4, 2.6, 6, 3);
         }
       }
+      // hit-zone auras: bright, pulsing orange on the enemy's gas cells (the pulse quickens as a cell weakens), a faint blue on our own
+      { const enemy = !!myTeam && side !== myTeam;
+        for (let i = 0; i < CELLS; i++) {
+          const am = s.auras[i], on = !s.burning[i] && !s.down && !s.crashed, weak = 1 - Math.max(0, s.cells[i]) / CELL_HP, pulse = 0.5 + 0.5 * Math.sin(now * (3.2 + 4 * weak) + i * 0.9);
+          am.opacity = on ? (enemy ? 0.5 + 0.5 * pulse : 0.06 + 0.08 * pulse) : 0; am.color.setHSL(enemy ? 0.06 + 0.04 * pulse + 0.03 * weak : 0.54, 1, enemy ? 0.5 : 0.6);
+          am.userData ? 0 : 0; s.auraMeshes ??= s.mesh.children.filter(c => c.renderOrder === 8); s.auraMeshes[i].visible = am.opacity > 0.01;
+        } }
       if (!s.down && !frozen) turrets(s, now, planes, host, level, dt); else for (const t of s.turrets) t.mount.flashes.forEach(f => { f.visible = false; });
     }
     // ground point visuals and (host) capture

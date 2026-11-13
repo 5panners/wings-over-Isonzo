@@ -61,6 +61,7 @@ export class Plane {
     this.muzzles = [new THREE.Vector3(-0.2, 0.64, 2.95), new THREE.Vector3(0.2, 0.64, 2.95)];
     this.flash = this.muzzles.map(m => { const f = makeFlash(0.55); f.position.copy(m); this.mesh.add(f); return f; });
     this.flashT = -9; this.flashSide = 0;
+    this.rockets = 0; this.rocketMeshes = this.mesh.userData.rockets || []; this.rocketPos = this.mesh.userData.rocketPos || [];   // Le Prieur rockets left (0..8); the loaded ones show on the struts
     // control surfaces: ctl = stick positions (-1..1) for the player's own aircraft, otherwise worked out from how the aircraft is turning
     this.ctl = { pitch: 0, roll: 0, yaw: 0 }; this.shown = { pitch: 0, roll: 0, yaw: 0 }; this.live = false; this.surf = this.mesh.userData.ctl || null; this.prevQuat = new THREE.Quaternion();
   }
@@ -87,10 +88,10 @@ export class Plane {
       this.speed = 42; this.throttle = 0.85;
     }
     this.onGround = onRunway; this.hp = TYPES[this.type].hp; this.alive = true; this.firing = false;
-    this.lastHitBy = null; this.bank = 0; this.gunAt = now + 1.5; this.spawnedAt = now; this.resetDamage(); this.crashWhy = null; this.event = null; this.repairing = -9;
+    this.lastHitBy = null; this.bank = 0; this.gunAt = now + 1.5; this.spawnedAt = now; this.resetDamage(); this.rockets = 0;                  // rockets are lost with the aircraft this.crashWhy = null; this.event = null; this.repairing = -9;
     this.fwd.copy(Z).applyQuaternion(this.quat); this.vdir.copy(this.fwd); this.sink = 0;
   }
-  sync(dt = 1 / 60) { this.mesh.position.copy(this.pos); this.mesh.quaternion.copy(this.quat); this.mesh.visible = this.alive; if (this.surf && this.alive) this.moveSurfaces(dt); this.prevQuat.copy(this.quat); }
+  sync(dt = 1 / 60) { this.mesh.position.copy(this.pos); this.mesh.quaternion.copy(this.quat); this.mesh.visible = this.alive; if (this.surf && this.alive) this.moveSurfaces(dt); for (let i = 0; i < this.rocketMeshes.length; i++) this.rocketMeshes[i].visible = i < this.rockets; this.prevQuat.copy(this.quat); }
   // Deflect the ailerons, elevator and rudder. They follow the stick when it is ours; for every other aircraft they follow the turning
   // it is doing (angular velocity in its own frame, from how its orientation changed this frame), which gives the same picture.
   moveSurfaces(dt) {
@@ -103,7 +104,7 @@ export class Plane {
     s.pitch += (c.pitch - s.pitch) * a; s.roll += (c.roll - s.roll) * a; s.yaw += (c.yaw - s.yaw) * a;
     const D = this.dmg, M = 0.55;
     f.ailL.rotation.x = -s.roll * M; f.ailR.rotation.x = s.roll * M;                       // roll right: left aileron down, right aileron up
-    f.elev.rotation.x = s.pitch * M; f.rud.rotation.y = -s.yaw * M;                        // pull back: elevator up; right rudder: trailing edge to the left
+    f.elev.rotation.x = s.pitch * M; f.rud.rotation.y = s.yaw * M;                         // pull back: elevator up; right rudder: trailing edge to the right (flipped per playtest)
     f.ailL.visible = D.wingL < 0.7; f.ailR.visible = D.wingR < 0.7; f.elev.visible = f.rud.visible = D.tail < 0.85;   // shot away
   }
 }
