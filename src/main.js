@@ -47,10 +47,23 @@ const puffMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), ne
 // glowing puffs (fireballs) are unlit so they stay bright at night
 const glowMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshBasicMaterial({ fog: false }), 120);
 for (const m of [tracerMesh, puffMesh, glowMesh]) { m.frustumCulled = false; m.count = 0; scene.add(m); }
-// explosion flashes: a few point lights kept in the scene and fired in turn, so ground and objects nearby light up briefly
-const FLASH_TIME = 0.45, FLASH_PEAK = 3500;
-const flashes = Array.from({ length: 3 }, () => { const l = new THREE.PointLight('#ffc070', 0, 320, 2); l.userData.t = 0; scene.add(l); return l; });
-let nextFlash = 0;
+// Flashes of light for explosions and muzzle flashes. Every light in the scene costs every surface a little, so
+// there are only four, shared: a new flash takes a free one, else it displaces the weakest/farthest unless it is
+// less important. Range and strength are set per flash (changing them does not rebuild any shaders).
+const LIGHTS = Array.from({ length: 4 }, () => { const l = new THREE.PointLight('#ffc070', 0, 40, 2); Object.assign(l.userData, { t: 0, life: 1, peak: 0, fresh: false, prio: 0 }); scene.add(l); return l; });
+function flashLight(pos, peak, life, range, prio, color = '#ffc070') {
+  const d2 = pos.distanceToSquared(camera.position); if (prio < 2 && d2 > 280 * 280) return;
+  let slot = null, worst = Infinity;
+  for (const l of LIGHTS) {
+    if (l.userData.t <= 0) { slot = l; worst = -Infinity; break; }
+    const score = l.userData.prio * 1e9 - l.position.distanceToSquared(camera.position);          // lower = easier to displace
+    if (score < worst) { worst = score; slot = l; }
+  }
+  if (worst > prio * 1e9 - d2) return;                                  // everything running is more important than this
+  Object.assign(slot.userData, { t: life, life, peak, fresh: true, prio });
+  slot.position.copy(pos); slot.distance = range; slot.color.set(color);
+}
+const muzzleLight = (pos, power = 1) => flashLight(pos, 140 * power, 0.07, 32, 1, '#ffcf80');
 function puff(pos, color, size, life, rise = 2, spread = 0) {
   if (puffs.length >= 400) puffs.shift();
   puffs.push({ p: pos.clone().add(V2.set((Math.random() - 0.5) * spread, (Math.random() - 0.5) * spread, (Math.random() - 0.5) * spread)), c: color, s: size, life, max: life, rise, glow: false });
@@ -61,12 +74,12 @@ function explode(pos) {
   for (let i = 0; i < 12; i++) puff(pos, ['#fff2b0', '#ffc24a', '#ff8a2a'][i % 3], 3 + Math.random() * 5, 0.45 + Math.random() * 0.6, 4, 7).glow = true;   // fireball
   for (let i = 0; i < 20; i++) puff(pos, i % 4 ? '#2d2a28' : '#55504a', 2.5 + Math.random() * 4, 1.8 + Math.random() * 2.8, 3 + Math.random() * 3, 11);       // smoke
   for (let i = 0; i < 8; i++) puff(pos, '#3a2a1c', 0.5 + Math.random() * 0.5, 0.9 + Math.random() * 0.8, -14 - Math.random() * 10, 16);                         // falling debris
-  const l = flashes[nextFlash++ % flashes.length]; l.position.copy(pos); l.position.y += 4; l.userData.t = FLASH_TIME;
+  flashLight(V2.copy(pos).setY(pos.y + 4), 3500, 0.45, 320, 2);
 }
 
 // ---------------- Zeppelin Front ----------------
 const front = createFront(scene, {
-  puff, explode, say: t => say(t), label: id => label(id),
+  puff, explode, say: t => say(t), label: id => label(id), light: (p, power) => muzzleLight(p, power),
   shoot(origin, dir, side, real) {                     // airship gunners: real rounds on the host, tracers everywhere else
     bullets.push({ p: origin.clone(), v: dir.clone().multiplyScalar(GUN.speed), life: GUN.life, by: 'air-' + side, team: side, real });
     gunSound(origin.distanceTo(camera.position), false);
@@ -276,7 +289,10 @@ function step(t, dt) {
       p.gunAt = t + GUN.interval;
       V.copy(p.fwd).multiplyScalar(GUN.speed + p.speed).add(V2.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(3));
       gunSound(p.pos.distanceTo(camera.position), p === me);
-      bullets.push({ p: p.pos.clone().addScaledVector(p.fwd, 3.5), v: V.clone(), life: GUN.life, by: p.id, team: p.team, real: p.local });
+      const side = p.flashSide ^= 1, origin = BE.copy(p.muzzles[side]).applyQuaternion(p.quat).add(p.pos);   // rounds leave from the muzzles, alternately
+      bullets.push({ p: origin.clone(), v: V.clone(), life: GUN.life, by: p.id, team: p.team, real: p.local });
+      p.flashT = t; p.flash[side].rotation.z = Math.random() * 6.28; p.flash[side].scale.setScalar(0.4 + Math.random() * 0.3);
+      muzzleLight(origin, p === me ? 1 : 0.8);
     }
     if (p.alive) {                                             // smoke, flame and fuel vapour show the damage
       const eng = p.local ? p.dmg.eng : (p.smoke ? 0.5 : 0), k = p === me ? 0.5 : 1;   // our own trail is kept small so it does not blot out the view
@@ -286,6 +302,7 @@ function step(t, dt) {
       if (p.local && p.dmg.fuel > 0.3 && p.fuel > 0 && Math.random() < dt * 9) puff(p.pos, '#e9eef2', 0.6, 1.0, 0.5, 0.4);
     }
     p.sync();
+    for (let k = 0; k < 2; k++) p.flash[k].visible = p.alive && p.flashSide === k && t - p.flashT < 0.05;       // each flash shows for a moment after its shot
   }
   if (mode === 'front') front.update(dt, t, { host: isHost(), planes, myTeam: me?.team, level: botSettings.level, frozen: !!roundEndAt });
   // bullets
@@ -371,7 +388,10 @@ function updateEffects(dt) {
   }
   glowMesh.count = g; glowMesh.instanceMatrix.needsUpdate = true; if (glowMesh.instanceColor) glowMesh.instanceColor.needsUpdate = true;
   // flash: full brightness at once, then a quick fade
-  for (const l of flashes) { l.userData.t = Math.max(0, l.userData.t - dt); const a = l.userData.t / FLASH_TIME; l.intensity = FLASH_PEAK * a * a; }
+  for (const l of LIGHTS) {                                             // full strength on the first frame, then a quick fade
+    const u = l.userData; if (u.fresh) u.fresh = false; else u.t = Math.max(0, u.t - dt);
+    const a = u.t / u.life; l.intensity = u.peak * a * a;
+  }
   puffMesh.count = n; puffMesh.instanceMatrix.needsUpdate = true; if (puffMesh.instanceColor) puffMesh.instanceColor.needsUpdate = true;
 }
 
@@ -627,6 +647,6 @@ showVolumes();
 applyGfx(false);
 $('form').addEventListener('submit', e => { e.preventDefault(); start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
-window.__woi = { front, get mode() { return mode; }, setMode, flight, shadowExtent: () => sun.shadow.camera.right, gfx, renderer, explode, flashes, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
+window.__woi = { LIGHTS, front, get mode() { return mode; }, setMode, flight, shadowExtent: () => sun.shadow.camera.right, gfx, renderer, explode, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
 frame();
 if (params.get('autostart')) start();

@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { H, TOWNS } from './world.js';
 import { GUN } from './plane.js';
 import { makeFlagMesh, registerArm } from './flags.js';
+import { buildGunMount } from './guns.js';
 
 export const TICKETS = 150, AIRSHIP_TICKETS = 50, BLEED_EVERY = 4;
 export const SHIP_LEN = 160, SHIP_R = 11, CELLS = 6, CELL_HP = 320;
@@ -17,7 +18,8 @@ export const TEAM_TINT = { it: '#3d8bf0', ah: '#e2463b', none: '#f2ead0' };
 // hull radius along the length, s = 0 at the tail to 1 at the nose
 export const radiusAt = s => (s <= 0 || s >= 1 ? 0 : R * Math.sqrt(1 - Math.pow(Math.abs(2 * s - 1), 2.4)));
 // gun positions in the hull frame (x, y, z) and which way they can fire: 1 = upper hemisphere, -1 = lower
-const TURRETS = [[0, R + 0.8, L * 0.22, 1], [0, R * 0.8, -L * 0.3, 1], [0, -R - 4.5, L * 0.22, -1], [0, -R - 4.5, -L * 0.18, -1]];
+// pivot of each mount (x, y, z in the hull frame) and 1 = on top of the hull, -1 = slung under a gondola
+const TURRETS = [[0, radiusAt(0.72) + 1.9, L * 0.22, 1], [0, radiusAt(0.2) + 1.9, -L * 0.3, 1], [0, -R - 6.7, L * 0.22, -1], [0, -R - 6.7, -L * 0.18, -1]];
 const TURRET_RANGE = 210, AIM_ERROR = [0.06, 0.075, 0.048, 0.03];   // aim error by bot level + 1: no bots, rookie, regular, ace
 // patrol racetracks in front of each airfield, long axis north-south, about the same distance from Gradisca
 const PATROL = { it: { cx: -245, cz: 230, rx: 80, rz: 200, theta0: 0 }, ah: { cx: 225, cz: 215, rx: 80, rz: 200, theta0: Math.PI } };
@@ -58,8 +60,8 @@ function buildAirship(side) {
     for (const dz of [-len / 2 + 2, len / 2 - 2]) for (const sx of [-1.6, 1.6]) g.add(part(new THREE.BoxGeometry(0.25, 3.2, 0.25), dark, sx, -R - 0.4, z + dz));
     for (const sx of [-1, 1]) { g.add(part(new THREE.CylinderGeometry(0.9, 0.9, 3.4, 8).rotateX(Math.PI / 2), dark, sx * 3.6, -R - 2.6, z - len / 2 + 2)); g.add(part(new THREE.CylinderGeometry(2.4, 2.4, 0.08, 14).rotateX(Math.PI / 2), new THREE.MeshLambertMaterial({ color: '#e8dcc0', transparent: true, opacity: 0.3 }), sx * 3.6, -R - 2.6, z - len / 2)); }
   }
-  g.add(part(new THREE.BoxGeometry(2.4, 1.2, 3), dark, 0, R + 0.6, L * 0.22));      // gun platform on top
-  return { group: g, cellMats, base };
+  const mounts = TURRETS.map(t => { const m = buildGunMount(t[3]); m.root.position.set(t[0], t[1], t[2]); g.add(m.root); return m; });
+  return { group: g, cellMats, base, mounts };
 }
 function buildPoint(scene) {
   const g = new THREE.Group(), pts = [];
@@ -84,7 +86,7 @@ export function createFront(scene, fx) {
   const point = { v: 0, owner: null, contested: false, count: { it: 0, ah: 0 }, ...buildPoint(scene) };
   const ships = {};
   for (const side of SIDES) {
-    const cfg = PATROL[side], { group, cellMats, base } = buildAirship(side);
+    const cfg = PATROL[side], { group, cellMats, base, mounts } = buildAirship(side);
     // cruise height: well clear of the highest ground anywhere under the racetrack
     let top = 0; for (let a = 0; a < Math.PI * 2; a += 0.05) for (const dx of [-90, 0, 90]) for (const dz of [-90, 0, 90]) top = Math.max(top, H(cfg.cx + cfg.rx * Math.cos(a) + dx, cfg.cz + cfg.rz * Math.sin(a) + dz));
     scene.add(group);
@@ -92,7 +94,7 @@ export function createFront(scene, fx) {
       cells: new Array(CELLS).fill(CELL_HP), burning: new Array(CELLS).fill(false), down: false, crashed: false, fall: 0, heading: 0, sink: 0,
       pos: new THREE.Vector3(), quat: new THREE.Quaternion(), inv: new THREE.Quaternion(), fwd: new THREE.Vector3(0, 0, 1),
       netPos: new THREE.Vector3(), netQuat: new THREE.Quaternion(), hasNet: false, lastHitBy: null, downBy: null, wreck: null,
-      turrets: TURRETS.map(t => ({ off: new THREE.Vector3(t[0], t[1], t[2]), up: t[3], burstEnd: 0, nextShot: 0, err: new THREE.Vector3(), target: null, firing: false })),
+      turrets: TURRETS.map((t, i) => ({ off: new THREE.Vector3(t[0], t[1], t[2]), up: t[3], mount: mounts[i], burstEnd: 0, nextShot: 0, err: new THREE.Vector3(), target: null, firing: false, yaw: 0, pitch: t[3] * 0.35, recoil: 0, shot: 0, flashUntil: [0, 0], lastTarget: null, lastSeen: -99 })),
       seen: { down: false, hp: CELLS * CELL_HP, alarm: -99 } };
   }
   const prevOwner = { v: null };
@@ -155,11 +157,13 @@ export function createFront(scene, fx) {
   }
 
   // ---- turrets ----
-  function turrets(s, now, planes, host, level) {
+  const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+  function turrets(s, now, planes, host, level, dt) {
     const err = AIM_ERROR[level + 1] ?? 0.05;
+    s.mesh.updateMatrixWorld(true);
     for (const t of s.turrets) {
-      const o = local(s, t.off.x, t.off.y, t.off.z, new THREE.Vector3());
-      let tgt = null;
+      const o = local(s, t.off.x, t.off.y, t.off.z, new THREE.Vector3()), mt = t.mount;
+      let tgt = null, aim = null;
       if (host) {
         let bd = TURRET_RANGE;
         for (const p of planes.values()) {
@@ -170,12 +174,32 @@ export function createFront(scene, fx) {
         }
         if (tgt && now > t.burstEnd + 1.3) { t.burstEnd = now + 0.9 + Math.random() * 0.5; t.err.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(2 * err); }
         t.firing = !!tgt && now < t.burstEnd; t.target = t.firing ? tgt.id : null;
-      } else { tgt = t.target ? planes.get(t.target) : null; t.firing = !!tgt; }
+        aim = tgt;                                                            // the gunner keeps tracking between bursts
+      } else {
+        tgt = t.target ? planes.get(t.target) : null; t.firing = !!tgt;
+        aim = tgt || (now - t.lastSeen < 2 ? planes.get(t.lastTarget) : null);   // others only learn the target while it fires, so keep following it a moment
+      }
+      // swing the mount toward the aim point (where the shot would have to go to hit), or back to rest
+      let wantYaw = 0, wantPitch = t.up * 0.35;
+      if (aim && aim.alive) {
+        const d = aim.pos.distanceTo(o);
+        v3.copy(aim.pos).addScaledVector(aim.fwd, aim.speed * d / GUN.speed).sub(o).applyQuaternion(s.inv).normalize();
+        wantYaw = Math.atan2(v3.x, v3.z); wantPitch = THREE.MathUtils.clamp(Math.asin(THREE.MathUtils.clamp(v3.y, -1, 1)), t.up > 0 ? -0.15 : -1.45, t.up > 0 ? 1.45 : 0.15);
+      }
+      const k = Math.min(1, 7 * dt);
+      t.yaw = wrap(t.yaw + wrap(wantYaw - t.yaw) * k); t.pitch += (wantPitch - t.pitch) * k;
+      mt.yawG.rotation.y = t.yaw; mt.pitchG.rotation.x = -t.pitch;
+      t.recoil *= Math.exp(-26 * dt); mt.recoilG.position.z = -0.16 * t.recoil;
+      mt.root.updateMatrixWorld(true);
+      for (let k2 = 0; k2 < 2; k2++) mt.flashes[k2].visible = now < t.flashUntil[k2];
       if (!t.firing || !tgt || now < t.nextShot) continue;
       t.nextShot = now + (host ? 0.12 : 0.14);
-      const d = tgt.pos.distanceTo(o);
-      v2.copy(tgt.pos).addScaledVector(tgt.fwd, tgt.speed * d / GUN.speed).addScaledVector(t.err, d).sub(o).normalize();
-      fx.shoot(o, v2, s.side, host);
+      const side = t.shot++ & 1, flash = mt.flashes[side], tip = flash.getWorldPosition(new THREE.Vector3());   // alternate barrels, rounds leave from the muzzle
+      const d = tgt.pos.distanceTo(tip);
+      v2.copy(tgt.pos).addScaledVector(tgt.fwd, tgt.speed * d / GUN.speed).addScaledVector(t.err, d).sub(tip).normalize();
+      fx.shoot(tip, v2, s.side, host);
+      t.flashUntil[side] = now + 0.055; flash.visible = true; flash.rotation.z = Math.random() * 6.28; flash.scale.setScalar(1.3 + Math.random() * 0.7);
+      t.recoil = 1; fx.light(tip, 1.2);
     }
   }
 
@@ -243,7 +267,7 @@ export function createFront(scene, fx) {
           if (Math.random() < 0.6) fx.puff(p, '#2b2927', 4 + Math.random() * 4, 2.6, 6, 3);
         }
       }
-      if (!s.down && !frozen) turrets(s, now, planes, host, level);
+      if (!s.down && !frozen) turrets(s, now, planes, host, level, dt); else for (const t of s.turrets) t.mount.flashes.forEach(f => { f.visible = false; });
     }
     // ground point visuals and (host) capture
     if (host && !frozen) pointStep(dt, planes);
@@ -334,7 +358,7 @@ export function createFront(scene, fx) {
       for (let i = 0; i < CELLS; i++) s.burning[i] = !!((a[8] | 0) & (1 << i));
       s.down = !!(flags & 1); s.downBy = a[10] || null;
       if (crashed && !s.crashed) crash(s, now);
-      if (Array.isArray(a[11])) s.turrets.forEach((t, i) => { t.target = a[11][i] || null; });
+      if (Array.isArray(a[11])) s.turrets.forEach((t, i) => { t.target = a[11][i] || null; if (t.target) { t.lastTarget = t.target; t.lastSeen = now; } });
       s.theta = +a[12] || s.theta; s.heading = +a[13] || 0; s.fall = +a[14] || 0;          // so that whoever takes over as host carries on from here
     });
     if (Array.isArray(m.g)) { point.v = +m.g[0] || 0; point.owner = m.g[1] === 'it' || m.g[1] === 'ah' ? m.g[1] : null; point.contested = !!m.g[2]; }

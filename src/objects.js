@@ -39,6 +39,9 @@ export function biplane(o) {
   g.add(rod([-0.75, -1.15, 1.6], [0.75, -1.15, 1.6], 0.05, '#333'), rod([0, -0.2, -2.0], [0, -0.55, -2.3], 0.05, '#5a3d22'));
   for (const sx of [-1, 1]) g.add(at(roundel(side, 0.5), sx * sp * 0.38, 1.12, 1.15));
   g.add(mk(B(0.5, 0.3, 0.7), '#2a2420', 0, 0.45, 0.2)); // cockpit
+  if (o.flying) for (const x of [-0.2, 0.2]) {                                           // twin synchronised machine guns on top of the nose
+    g.add(mk(Cy(0.04, 0.04, 1.5, 6), '#1c1c1c', x, 0.64, 2.15).rotateX(Math.PI / 2), mk(Cy(0.075, 0.075, 0.7, 6), '#5d605c', x, 0.64, 1.65).rotateX(Math.PI / 2), mk(B(0.14, 0.12, 0.5), '#3a3d3a', x, 0.58, 1.3));
+  }
   if (o.band) g.add(mk(Cy(0.36, 0.3, 0.4, 6), o.band, 0, 0, -0.6).rotateX(Math.PI / 2));
   return g;
 }

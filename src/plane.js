@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { H, AIRFIELDS, HALF, HALF_X, SECTORS } from './world.js';
 import { SPAD, ALBATROS } from './objects.js';
+import { makeFlash } from './guns.js';
 
 // One fighter per side for now; add entries here to add aircraft.
 export const TYPES = {
@@ -56,6 +57,10 @@ export class Plane {
     this.net = null;                                  // latest network snapshot (remote planes only)
     this.resetDamage();
     this.mesh = TYPES[type].build(true); this.mesh.visible = false;
+    // the two guns on the nose fire in turn, each with its own flash
+    this.muzzles = [new THREE.Vector3(-0.2, 0.64, 2.95), new THREE.Vector3(0.2, 0.64, 2.95)];
+    this.flash = this.muzzles.map(m => { const f = makeFlash(0.55); f.position.copy(m); this.mesh.add(f); return f; });
+    this.flashT = -9; this.flashSide = 0;
   }
   get local() { return this.net === null; }
   // damage state: each zone runs 0 (sound) to 1 (destroyed)
