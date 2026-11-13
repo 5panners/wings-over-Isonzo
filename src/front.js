@@ -20,7 +20,7 @@ export const radiusAt = s => (s <= 0 || s >= 1 ? 0 : R * Math.sqrt(1 - Math.pow(
 // gun positions in the hull frame (x, y, z) and which way they can fire: 1 = upper hemisphere, -1 = lower
 // pivot of each mount (x, y, z in the hull frame) and 1 = on top of the hull, -1 = slung under a gondola
 const TURRETS = [[0, radiusAt(0.72) + 1.9, L * 0.22, 1], [0, radiusAt(0.2) + 1.9, -L * 0.3, 1], [0, -R - 6.7, L * 0.22, -1], [0, -R - 6.7, -L * 0.18, -1]];
-const TURRET_RANGE = 210, AIM_ERROR = [0.06, 0.075, 0.048, 0.03];   // aim error by bot level + 1: no bots, rookie, regular, ace
+const TURRET_RANGE = 320, AIM_ERROR = [0.06, 0.075, 0.048, 0.03];   // aim error by bot level + 1: no bots, rookie, regular, ace
 // patrol racetracks in front of each airfield, long axis north-south, about the same distance from Gradisca
 const PATROL = { it: { cx: -245, cz: 230, rx: 80, rz: 200, theta0: 0 }, ah: { cx: 225, cz: 215, rx: 80, rz: 200, theta0: Math.PI } };
 const town = TOWNS.find(t => t.n === 'Gradisca');
@@ -165,12 +165,15 @@ export function createFront(scene, fx) {
       const o = local(s, t.off.x, t.off.y, t.off.z, new THREE.Vector3()), mt = t.mount;
       let tgt = null, aim = null;
       if (host) {
-        let bd = TURRET_RANGE;
+        let bs = Infinity;
         for (const p of planes.values()) {
           if (!p.alive || p.dying || p.onGround || p.team === s.side) continue;
-          const d = p.pos.distanceTo(o); if (d >= bd) continue;
+          const d = p.pos.distanceTo(o); if (d >= TURRET_RANGE) continue;
           v1.copy(p.pos).sub(s.pos).applyQuaternion(s.inv);                  // only shoot where the hull does not block
-          if (t.up > 0 ? v1.y > -2 : v1.y < 2) { bd = d; tgt = p; }
+          if (!(t.up > 0 ? v1.y > -2 : v1.y < 2)) continue;
+          // the nearest wins, but an aircraft that is lined up on the airship and firing counts as 100 closer: answer the attacker
+          const attacking = p.firing && v2.copy(s.pos).sub(p.pos).normalize().dot(p.fwd) > 0.96, score = d - (attacking ? 100 : 0);
+          if (score < bs) { bs = score; tgt = p; }
         }
         if (tgt && now > t.burstEnd + 1.3) { t.burstEnd = now + 0.9 + Math.random() * 0.5; t.err.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(2 * err); }
         t.firing = !!tgt && now < t.burstEnd; t.target = t.firing ? tgt.id : null;
