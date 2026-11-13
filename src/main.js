@@ -543,7 +543,8 @@ function drawHud(t) {
   $('msg').innerHTML = won ? `${NATION[won]} wins the ${mode === 'front' ? 'battle' : 'round'}<small>next round starting…</small>`
     : me.alive && me.dying ? 'Going down<small>out of control</small>'
     : me.alive && t - me.repairing < 0.4 ? `${me.onGround ? (me.speed < 6 ? 'Repairing and refuelling' : 'Repairing') : 'Ground crew at work'}<small>${me.onGround && me.speed >= 6 ? 'roll to a stop for faster repairs · ' : ''}${Math.round(100 * Math.min(me.hp / TYPES[me.type].hp, 1 - Math.max(...Object.values(me.dmg))))}% fit</small>`
-    : me.alive && me.onGround ? (me.throttle < 0.5 ? 'On the runway<small>open the throttle (Shift)</small>' : me.speed > TYPES[me.type].stall * 1.1 ? 'Flying speed<small>ease the stick back</small>' : '')
+    : me.alive && me.onGround && me.speed > 8 && me.throttle < 0.5 ? 'Not enough power<small>open the throttle further to lift off</small>'
+    : me.alive && me.onGround ? (me.throttle < 0.5 ? 'On the runway<small>open the throttle (Shift)</small>' : me.speed > TYPES[me.type].stall * 1.05 * flight.stall ? 'Flying speed<small>ease the stick back</small>' : '')
     : me.alive && me.fire ? 'On fire<small>dive hard to blow it out</small>'
     : !me.alive ? `${me.fate || 'Crashed'}<small>back in the air in ${Math.max(0, Math.ceil(me.respawnAt - t))} s</small>`
     : oobSince ? 'Turn back<small>you are leaving the combat area</small>'

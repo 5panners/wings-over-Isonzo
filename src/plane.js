@@ -206,14 +206,17 @@ export function setFlight(patch) {
 
 // ---------- on the runway (ground handling after Home Skies 1917) ----------
 // steer = -1..1 left/right. Returns a crash reason or null; clears p.onGround at lift-off.
+// Share of full thrust the engine gives on the ground. It has to be high enough that even a modest throttle (about 40%)
+// reaches lift-off speed, otherwise the aircraft rolls on at a steady speed and refuses to leave the ground.
+const GROUND_THRUST = 0.42;
 function groundRoll(p, pitch, steer, input, dt) {
-  const fo = input ? flight : FLIGHT_DEFAULT, t = TYPES[p.type], top = t.top * fo.top, takeoff = t.stall * fo.stall * 1.1 * (1 + 0.3 * wingDamage(p));
+  const fo = input ? flight : FLIGHT_DEFAULT, t = TYPES[p.type], top = t.top * fo.top, takeoff = t.stall * fo.stall * 1.05 * (1 + 0.3 * wingDamage(p));      // lift-off speed: a little over the stall speed
   if (input) p.throttle = input.throttleAbs != null ? input.throttleAbs : THREE.MathUtils.clamp(p.throttle + input.throttle * 0.7 * dt, 0, 1);
   p.heading -= steer * 0.9 * dt * THREE.MathUtils.clamp(p.speed / 8, 0.15, 1);
   // the tail comes up as speed builds; holding the stick back keeps the skid dragging on the grass
   let td = THREE.MathUtils.clamp(1.6 - p.speed / (takeoff * 0.55), 0, 1); if (pitch > 0.3 && p.speed < takeoff) td = Math.max(td, 0.7);
   const drag = p.speed > 0.05 ? 0.7 + 1.7 * td * (p.power > 0.2 ? 0.25 : 1) : 0;
-  p.speed = Math.max(0, p.speed + (p.power * KD * top * top * 0.3 - KD * p.speed * p.speed - drag) * dt);
+  p.speed = Math.max(0, p.speed + (p.power * KD * top * top * GROUND_THRUST - KD * p.speed * p.speed - drag) * dt);
   p.pos.x += Math.sin(p.heading) * p.speed * dt; p.pos.z += Math.cos(p.heading) * p.speed * dt;
   p.tail += (td * 0.19 - p.tail) * Math.min(1, 3 * dt);
   p.pos.y = H(p.pos.x, p.pos.z) + gearHeight(p.tail);
