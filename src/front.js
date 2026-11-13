@@ -22,7 +22,11 @@ export const radiusAt = s => (s <= 0 || s >= 1 ? 0 : R * Math.sqrt(1 - Math.pow(
 const TURRETS = [[0, radiusAt(0.72) + 1.9, L * 0.22, 1], [0, radiusAt(0.2) + 1.9, -L * 0.3, 1], [0, -R - 6.7, L * 0.22, -1], [0, -R - 6.7, -L * 0.18, -1]];
 // A shell: slower and heavier than a machine-gun round, with a bigger burst radius. Cannons fire one every FIRE_EVERY seconds, alternating barrels.
 export const SHELL = { speed: 205, life: 2.1, dmg: 24, r: 5 }, FIRE_EVERY = 0.85;
-const TURRET_RANGE = 320, AIM_ERROR = [0.06, 0.075, 0.048, 0.03];   // aim error by bot level + 1: no bots, rookie, regular, ace
+// Gunnery skill by bot level + 1 (no bots, rookie, regular, ace). A gunner only estimates where a moving target will be:
+//   lead  how much of the true lead he allows for (1 = perfect)
+//   err   sideways error as a fraction of the range, fixed for a burst, plus a fresh wobble on every shell
+//   first extra error on the first shell at a newly spotted target
+const TURRET_RANGE = 320, SKILL = [{ lead: 0.6, err: 0.1, first: 2.2 }, { lead: 0.5, err: 0.12, first: 2.6 }, { lead: 0.62, err: 0.085, first: 2.2 }, { lead: 0.78, err: 0.055, first: 1.8 }];
 // patrol racetracks in front of each airfield, long axis north-south, about the same distance from Gradisca
 const PATROL = { it: { cx: -245, cz: 230, rx: 80, rz: 200, theta0: 0 }, ah: { cx: 225, cz: 215, rx: 80, rz: 200, theta0: Math.PI } };
 const town = TOWNS.find(t => t.n === 'Gradisca');
@@ -161,7 +165,7 @@ export function createFront(scene, fx) {
   // ---- turrets ----
   const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
   function turrets(s, now, planes, host, level, dt) {
-    const err = AIM_ERROR[level + 1] ?? 0.05;
+    const sk = SKILL[level + 1] ?? SKILL[1];
     s.mesh.updateMatrixWorld(true);
     for (const t of s.turrets) {
       const o = local(s, t.off.x, t.off.y, t.off.z, new THREE.Vector3()), mt = t.mount;
@@ -177,7 +181,8 @@ export function createFront(scene, fx) {
           const attacking = p.firing && v2.copy(s.pos).sub(p.pos).normalize().dot(p.fwd) > 0.96, score = d - (attacking ? 100 : 0);
           if (score < bs) { bs = score; tgt = p; }
         }
-        if (tgt && now > t.burstEnd + 1.5) { t.burstEnd = now + 1.5 + Math.random() * 0.7; t.err.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(2 * err); }
+        if (tgt && now > t.burstEnd + 1.5) { t.burstEnd = now + 1.5 + Math.random() * 0.7; t.err.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(2 * sk.err); t.fresh = !t.hadTarget; }
+        t.hadTarget = !!tgt;
         t.firing = !!tgt && now < t.burstEnd; t.target = t.firing ? tgt.id : null;
         aim = tgt;                                                            // the gunner keeps tracking between bursts
       } else {
@@ -188,7 +193,7 @@ export function createFront(scene, fx) {
       let wantYaw = 0, wantPitch = t.up * 0.35;
       if (aim && aim.alive) {
         const d = aim.pos.distanceTo(o);
-        v3.copy(aim.pos).addScaledVector(aim.fwd, aim.speed * d / SHELL.speed).sub(o).applyQuaternion(s.inv).normalize();
+        v3.copy(aim.pos).addScaledVector(aim.fwd, aim.speed * d / SHELL.speed * sk.lead).sub(o).applyQuaternion(s.inv).normalize();
         wantYaw = Math.atan2(v3.x, v3.z); wantPitch = THREE.MathUtils.clamp(Math.asin(THREE.MathUtils.clamp(v3.y, -1, 1)), t.up > 0 ? -0.15 : -1.45, t.up > 0 ? 1.45 : 0.15);
       }
       const k = Math.min(1, 7 * dt);
@@ -201,7 +206,9 @@ export function createFront(scene, fx) {
       t.nextShot = now + FIRE_EVERY;
       const side = t.shot++ & 1, flash = mt.flashes[side], tip = flash.getWorldPosition(new THREE.Vector3());   // alternate barrels, rounds leave from the muzzle
       const d = tgt.pos.distanceTo(tip);
-      v2.copy(tgt.pos).addScaledVector(tgt.fwd, tgt.speed * d / SHELL.speed).addScaledVector(t.err, d).sub(tip).normalize();
+      // where the gunner thinks the target will be; the error grows with range, and each shell has its own wobble
+      const spread = (t.fresh ? sk.first : 1) * (0.7 + d / 220); t.fresh = false;
+      v2.copy(tgt.pos).addScaledVector(tgt.fwd, tgt.speed * d / SHELL.speed * sk.lead).addScaledVector(t.err, d * spread).add(v3.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(2 * sk.err * 0.6 * d)).sub(tip).normalize();
       fx.shoot(tip, v2, s.side, host, SHELL);
       t.flashUntil[side] = now + 0.1; flash.visible = true; flash.rotation.z = Math.random() * 6.28; flash.scale.setScalar(2.6 + Math.random() * 1.0);
       t.recoil = 1; fx.light(tip, 2.4);

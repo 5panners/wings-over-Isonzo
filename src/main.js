@@ -83,9 +83,10 @@ const front = createFront(scene, {
   puff, explode, say: t => say(t), label: id => label(id), light: (p, power) => muzzleLight(p, power),
   shoot(origin, dir, side, real, spec) {               // airship gunners: real shells on the host, tracers everywhere else
     bullets.push({ p: origin.clone(), v: dir.clone().multiplyScalar(spec.speed), life: spec.life, by: 'air-' + side, team: side, real, shell: true, dmg: spec.dmg, r: spec.r });
-    cannonSound(origin.distanceTo(camera.position));
+    cannonSound(origin.distanceTo(camera.position)); if (real) shellStats.fired++;
   },
 });
+const shellStats = { fired: 0, hit: 0 };         // for tests: how many airship shells were fired, and how many struck an aircraft
 const ROLES = ['capture', 'attack', 'hunt', 'escort'];      // bot n on each side takes ROLES[n % 4]
 let mode = 'front';
 function setMode(m) {
@@ -340,7 +341,7 @@ function step(t, dt) {
     }
     b.p.add(V);
     if (hit) {
-      puff(hit.pos, '#ffd36b', 0.8, 0.25, 0, 2);
+      puff(hit.pos, '#ffd36b', 0.8, 0.25, 0, 2); if (b.shell) shellStats.hit++;
       if (hit.local) damage(hit, b.dmg ?? GUN.damage, b.by, where); else net?.send({ t: 'x', to: hit.id, by: b.by, d: b.dmg ?? GUN.damage, z: where }, hit.owner);
       if (b.by === me?.id) { hitFlash = t + 0.12; hitScoredSound(); }
     }
@@ -658,6 +659,6 @@ showVolumes();
 applyGfx(false);
 $('form').addEventListener('submit', e => { e.preventDefault(); start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
-window.__woi = { LIGHTS, front, get mode() { return mode; }, setMode, flight, shadowExtent: () => sun.shadow.camera.right, gfx, renderer, explode, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
+window.__woi = { shellStats, LIGHTS, front, get mode() { return mode; }, setMode, flight, shadowExtent: () => sun.shadow.camera.right, gfx, renderer, explode, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
 frame();
 if (params.get('autostart')) start();
