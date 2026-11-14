@@ -8,6 +8,7 @@ import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, BOT_LEVELS, botSet
 import { updateFlags } from './flags.js';
 import { createWeather, WEATHER } from './weather.js';
 import { createRailway } from './railway.js';
+import { createTrails } from './trails.js';
 import { createPickup, ROCKETS_PER_PACK } from './pickup.js';
 import { createFront, POINT, CELLS, CELL_HP, SIDE_NAME, NATION, TEAM_TINT, SHIP_LEN } from './front.js';
 import { connect } from './net.js';
@@ -36,6 +37,7 @@ const sky = createDayNight(scene, { sun, hemi });   // sky.tod = hour of day, sk
 const weather = createWeather(scene, { sky, camera, clouds, fx: { light: (p, peak, life, range) => flashLight(p, peak, life, range, 2, '#cfe0ff'), thunder: (d, delay) => thunderSound(d, delay), rain: l => setRain(l), gusts: l => setGusts(l) } });
 const pickup = createPickup(scene);          // the one rocket pickup, see pickup.js
 buildObjects(scene).setMode({ map: false, rings: false, flights: [], lineup: false });
+const trails = createTrails(scene, camera);          // coloured vapour from the wingtips of aircraft in a fast dive
 const railway = createRailway(scene, { puff: (p, c, sz, life, rise, spread) => puff(p, c, sz, life, rise, spread) });          // the line, its viaducts and the trains
 { const s = sun.shadow.camera; s.near = 100; s.far = 4500; }   // its width is set every frame by sky.update
 const hud = $('hud'), ctx = hud.getContext('2d');
@@ -323,6 +325,7 @@ function frame() {
   drawHud(t);
 }
 function step(t, dt) {
+  trails.update(planes, dt);
   if (t > nextBotCheck) { nextBotCheck = t + 1; manageBots(); }
   for (const p of planes.values()) {
     if (!p.local) {                                           // remote: interpolate, drop if silent
@@ -837,6 +840,6 @@ showVolumes();
 applyGfx(false);
 $('form').addEventListener('submit', e => { e.preventDefault(); if (running) applyLiveSetup(); else start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
-window.__woi = { railway, pickup, fireRocket, ROCKET, hitStats, glowCount: () => glowMesh.count, weather, shellStats, LIGHTS, front, get mode() { return mode; }, setMode, flight, shadowExtent: () => sun.shadow.camera.right, gfx, renderer, explode, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
+window.__woi = { trails, railway, pickup, fireRocket, ROCKET, hitStats, glowCount: () => glowMesh.count, weather, shellStats, LIGHTS, front, get mode() { return mode; }, setMode, flight, shadowExtent: () => sun.shadow.camera.right, gfx, renderer, explode, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
 frame();
 if (params.get('autostart')) start();
