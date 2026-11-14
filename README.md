@@ -238,3 +238,5 @@ The default scheme is Battlefield-style: click the game to capture the mouse, th
 
 ### Assigning keys
 On the Controls tab, **Keyboard and mouse** lists every flight control with a key or mouse button and an alternate. Click one and press the new key or mouse button (Esc cancels); × clears it. A key does one thing, so assigning one that is already used takes it from the old control. **Battlefield** and **Classic** load a ready-made layout to start from, and **Mouse steers the aircraft** turns the virtual stick on or off. Esc, F9, Tab, M, [ ], comma and full stop belong to the game and can't be assigned.  A rudder key sensitivity slider (20% to 200%, default 70%) scales how hard the rudder keys swing the rudder; they now ease in rather than snapping to full. Esc now opens the options even when it was pressed to release a captured mouse.
+
+The airship heavy guns use a recorded heavy machine gun (`assets/airship-gun.mp3`), slightly varied in pitch for each shot and duller with distance. It has its own **Airship heavy guns** volume slider and test button on the Audio tab; the shells bursting are a separate **Shell bursts** slider.

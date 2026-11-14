@@ -13,7 +13,8 @@ export const CHANNELS = [
   { key: 'guns', label: 'Guns', hint: 'Your guns and everyone else\'s' },
   { key: 'jingle', label: 'Capture jingles', hint: 'The fanfare when your side takes the point, and the sad phrase when it is lost' },
   { key: 'rockets', label: 'Rockets', hint: 'Rockets launching and streaking away, and the chime of the rocket pickup' },
-  { key: 'cannons', label: 'Airship cannons', hint: 'The heavy guns on the airships, and their shells bursting' },
+  { key: 'airgun', label: 'Airship heavy guns', hint: 'The firing of the heavy machine guns on the airships' },
+  { key: 'cannons', label: 'Shell bursts', hint: 'Airship shells bursting, and the fallback gun sound while the recording loads' },
   { key: 'hits', label: 'Hits', hint: 'Rounds striking your aircraft, and your rounds striking home' },
   { key: 'booms', label: 'Explosions', hint: 'Crashes and aircraft blowing up' },
 ];
@@ -61,6 +62,8 @@ export function startSound() {
   }).catch(() => { /* no engine sound if the file cannot be loaded */ });
   // thunder: three recorded claps (assets/thunder1-3.mp3), one picked at random for each flash
   for (const n of [1, 2, 3]) fetch(new URL(`../assets/thunder${n}.mp3`, import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => thunderBufs.push(buf)).catch(() => {});
+  // the airship cannons: a recorded heavy machine gun (assets/airship-gun.mp3)
+  fetch(new URL('../assets/airship-gun.mp3', import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => { cannonBuf = buf; }).catch(() => {});
   // wind: looped noise through a band-pass that opens up with speed
   const src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), wg = ctx.createGain();
   src.buffer = noise; src.loop = true; bp.type = 'bandpass'; bp.Q.value = 0.6; wg.gain.value = 0;
@@ -160,8 +163,14 @@ export function gunSound(dist, own) {
   tone(bus.guns, 0.06, 'square', own ? 150 : 120, 60, 0.14 * v);
 }
 // The airship cannons: a heavy slow gun. Layers: a thump you feel, a body, the blast, the crack, and a rumble rolling away.
+let cannonBuf = null;
 export function cannonSound(dist) {
   if (!ctx) return; const v = Math.max(0.1, 1 / (1 + (dist / 190) * (dist / 190))); if (v < 0.04) return;
+  if (cannonBuf) {                                                       // the recording: a touch of pitch variation so a salvo does not sound mechanical, duller with distance
+    const src = ctx.createBufferSource(), lp = ctx.createBiquadFilter(), g = ctx.createGain();
+    src.buffer = cannonBuf; src.playbackRate.value = 0.94 + Math.random() * 0.12; lp.type = 'lowpass'; lp.frequency.value = Math.max(1200, 16000 - dist * 22); g.gain.value = 1.3 * v;
+    src.connect(lp); lp.connect(g); g.connect(bus.airgun); src.start(); return;
+  }
   tone(bus.cannons, 0.6, 'sine', 95, 26, 1.0 * v);
   tone(bus.cannons, 0.2, 'sawtooth', 220, 48, 0.32 * v);
   burst(bus.cannons, 0.55, 'lowpass', 1500, 90, 0.95 * v);
@@ -252,7 +261,8 @@ export function previewSound(key) {
   if (!ctx) return;
   const t = ctx.currentTime, later = (fn, ms) => setTimeout(fn, ms);
   if (key === 'guns') for (let i = 0; i < 6; i++) later(() => gunSound(0, true), i * 90);
-  else if (key === 'cannons') { cannonSound(0); later(() => crumpSound(20), 900); later(() => cannonSound(0), 1700); }
+  else if (key === 'airgun') { cannonSound(0); later(() => cannonSound(0), 850); later(() => cannonSound(60), 1700); }
+  else if (key === 'cannons') { crumpSound(20); later(() => crumpSound(60), 800); later(() => crumpSound(10), 1500); }
   else if (key === 'jingle') { captureJingle(); later(lostJingle, 3600); }
   else if (key === 'rain' && rainNodes) { const t = ctx.currentTime; for (const [g, a] of [[rainNodes[0], 0.3], [rainNodes[1], 0.28]]) { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(a, t + 0.7); g.gain.setValueAtTime(a, t + 2.0); g.gain.linearRampToValueAtTime(0, t + 3.0); } }
   else if (key === 'gusts' && gustNode) { const t = ctx.currentTime; gustNode.gain.cancelScheduledValues(t); gustNode.gain.setValueAtTime(0, t); gustNode.gain.linearRampToValueAtTime(0.5, t + 1.2); gustNode.gain.setValueAtTime(0.5, t + 2.6); gustNode.gain.linearRampToValueAtTime(0, t + 4.2); }
