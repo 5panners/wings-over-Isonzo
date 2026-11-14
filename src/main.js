@@ -276,15 +276,63 @@ addEventListener('keydown', e => { if (e.code === 'F9' && running) { e.preventDe
   if (running && (e.code === 'BracketLeft' || e.code === 'BracketRight')) { if (isHost()) { sky.tod = (sky.tod + (e.code === 'BracketRight' ? 1 : 23)) % 24; say('Time set to ' + sky.clock()); } else say('Only the host can change the time'); }
   keys.add(e.code); if (running && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) e.preventDefault(); });
 addEventListener('keyup', e => keys.delete(e.code));
-addEventListener('blur', () => { keys.clear(); mouseFire = false; });
-$('c').addEventListener('mousedown', () => { startSound(); mouseFire = true; }); addEventListener('mouseup', () => mouseFire = false);
+addEventListener('blur', () => { keys.clear(); mouseFire = false; mouseRocket = false; });
+let mouseRocket = false;
+$('c').addEventListener('mousedown', e => {
+  startSound();
+  if (kb.scheme === 'bf' && running && !controlsOpen() && !god.on && !document.pointerLockElement) { $('c').requestPointerLock?.(); return; }      // the first click only captures the mouse
+  if (e.button === 2 && kb.scheme === 'bf') mouseRocket = true; else mouseFire = true;
+});
+addEventListener('mouseup', e => { if (e.button === 2) mouseRocket = false; else mouseFire = false; });
+// ---- keyboard and mouse schemes ----
+// 'bf' (Battlefield): the mouse moves a virtual stick (pitch and roll) that drifts back to centre; W / S throttle up and down; A / D rudder; Q / E roll;
+// left click fires the guns, right click a rocket. 'classic': W S pitch, A D roll, Q E rudder, Shift / Ctrl throttle.
+const kb = { scheme: 'bf', sens: 1, centre: 0.5, x: 0, y: 0, locked: false, at: performance.now() };
+try { const v = JSON.parse(localStorage.getItem('woi-kb') || '{}'); if (v.scheme === 'bf' || v.scheme === 'classic') kb.scheme = v.scheme; if (v.sens >= 0.2 && v.sens <= 3) kb.sens = v.sens; if (v.centre >= 0 && v.centre <= 2) kb.centre = v.centre; } catch { /* no storage */ }
+const saveKb = () => { try { localStorage.setItem('woi-kb', JSON.stringify({ scheme: kb.scheme, sens: kb.sens, centre: kb.centre })); } catch { /* no storage */ } };
+const KEY_TEXT = {
+  bf: 'Pitch and roll <b>mouse</b> · Throttle <b>W</b> / <b>S</b> · Rudder <b>A</b> / <b>D</b> · Roll <b>Q</b> / <b>E</b> · Fire <b>left click</b> or <b>Space</b> · Rocket <b>right click</b> or <b>R</b> · Sound <b>M</b> · Time of day <b>[ ]</b> · Scoreboard <b>Tab</b> · Options <b>Esc</b>',
+  classic: 'Pitch <b>W S</b> or <b>↑ ↓</b> · Roll <b>A D</b> or <b>← →</b> · Rudder <b>Q E</b> · Throttle <b>Shift</b> / <b>Ctrl</b> · Fire <b>Space</b> or mouse · Rockets <b>R</b> · Sound <b>M</b> · Time of day <b>[ ]</b> · Scoreboard <b>Tab</b> · Options <b>Esc</b>',
+};
+const HELP_TEXT = {
+  bf: 'Mouse pitch and roll · W/S throttle · A/D rudder · Q/E roll · Click to fire · Right click rocket · M sound · [ ] time of day · Tab scoreboard · Esc options',
+  classic: 'W/S or ↑/↓ pitch · A/D or ←/→ roll · Q/E rudder · Shift / Ctrl throttle · Space or mouse to fire · R rockets · M sound · [ ] time of day · Tab scoreboard · Esc options',
+};
+const THROTTLE_KEY = () => kb.scheme === 'bf' ? 'W' : 'Shift';
+function applyKb() {
+  $('keytext').innerHTML = KEY_TEXT[kb.scheme]; $('help').textContent = HELP_TEXT[kb.scheme]; $('kbscheme').value = kb.scheme;
+  $('msens').value = Math.round(kb.sens * 100); $('msens-out').textContent = Math.round(kb.sens * 100) + '%'; $('mcentre').value = Math.round(kb.centre * 100); $('mcentre-out').textContent = kb.centre ? Math.round(kb.centre * 100) + '%' : 'off (holds)';
+  if (kb.scheme !== 'bf') { kb.x = kb.y = 0; document.exitPointerLock?.(); }
+}
+$('kbscheme').addEventListener('change', e => { kb.scheme = e.target.value; saveKb(); applyKb(); });
+$('msens').addEventListener('input', e => { kb.sens = e.target.value / 100; saveKb(); applyKb(); });
+$('mcentre').addEventListener('input', e => { kb.centre = e.target.value / 100; saveKb(); applyKb(); });
+document.addEventListener('pointerlockchange', () => { kb.locked = document.pointerLockElement === $('c'); });
+addEventListener('mousemove', e => {                                                   // the mouse moves the virtual stick while it is captured
+  if (kb.scheme !== 'bf' || !kb.locked || god.on || !running || controlsOpen()) return;
+  kb.x = Math.max(-1, Math.min(1, kb.x + e.movementX * 0.0045 * kb.sens)); kb.y = Math.max(-1, Math.min(1, kb.y + e.movementY * 0.0045 * kb.sens));
+});
+addEventListener('contextmenu', e => { if (running && kb.scheme === 'bf') e.preventDefault(); });
 const k = (...c) => c.some(x => keys.has(x)) ? 1 : 0;
 const clamp1 = v => Math.max(-1, Math.min(1, v));
-function readInput() {                                        // keyboard and controller add together
-  const g = pollGamepad();
+function readInput() {                                        // keyboard, mouse and controller add together
+  const g = pollGamepad(), nowMs = performance.now(), dt = Math.min(0.1, (nowMs - kb.at) / 1000); kb.at = nowMs;
   if (god.on) return { pitch: 0, roll: 0, yaw: 0, throttle: 0, throttleAbs: undefined, fire: 0, rocket: 0 };
+  const inv = flight.invert ? -1 : 1;
+  if (kb.scheme === 'bf') {
+    if (kb.centre > 0) { const d = Math.exp(-kb.centre * dt); kb.x *= d; kb.y *= d; }              // the virtual stick drifts back to centre
+    return {
+      pitch: clamp1(kb.y + k('ArrowDown') - k('ArrowUp') + g.pitch) * inv,                       // mouse back / down arrow / stick back pulls the nose up
+      roll: clamp1(kb.x + k('KeyE', 'ArrowRight') - k('KeyQ', 'ArrowLeft') + g.roll),
+      yaw: clamp1(k('KeyD') - k('KeyA') + g.yaw),
+      throttle: clamp1(k('KeyW', 'ShiftLeft', 'ShiftRight') - k('KeyS', 'ControlLeft', 'KeyC') + g.throttle),
+      throttleAbs: g.throttleAbs,
+      fire: k('Space') || mouseFire || g.fire,
+      rocket: k('KeyR') || mouseRocket || g.rocket,
+    };
+  }
   return {
-    pitch: clamp1(k('KeyS', 'ArrowDown') - k('KeyW', 'ArrowUp') + g.pitch) * (flight.invert ? -1 : 1),       // S / down arrow / stick back pulls the nose up (reversed if inverted)
+    pitch: clamp1(k('KeyS', 'ArrowDown') - k('KeyW', 'ArrowUp') + g.pitch) * inv,               // S / down arrow / stick back pulls the nose up (reversed if inverted)
     roll: clamp1(k('KeyD', 'ArrowRight') - k('KeyA', 'ArrowLeft') + g.roll),
     yaw: clamp1(k('KeyE') - k('KeyQ') + g.yaw),
     throttle: clamp1(k('ShiftLeft', 'ShiftRight') - k('ControlLeft', 'KeyC') + g.throttle),
@@ -653,6 +701,10 @@ function drawHud(t) {
     ctx.fillStyle = f > 0.5 ? '#9fd08a' : f > 0.2 ? '#f0c05a' : '#ff6a4c'; ctx.fillRect(x, y, w * f, h);
     ctx.restore();
   }
+  if (kb.scheme === 'bf' && me.alive && !me.dying && !god.on) {              // the virtual stick: a ring with a dot where the mouse is holding it, or a reminder to capture the mouse
+    if (kb.locked) { const cx = W / 2, cy = Hh / 2 + 0; ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(cx, cy, 86, 0, 6.3); ctx.stroke(); ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.beginPath(); ctx.arc(cx + kb.x * 86, cy + kb.y * 86, 4.5, 0, 6.3); ctx.fill(); }
+    else if (!controlsOpen()) { ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.shadowColor = '#000'; ctx.shadowBlur = 4; ctx.textAlign = 'center'; ctx.fillText('Click the game to capture the mouse for flying', W / 2, Hh - 70); ctx.shadowBlur = 0; }
+  }
   if (me.alive && !me.dying) {                                 // gunsight
     const s = proj(V2.copy(me.pos).addScaledVector(me.fwd, 190));
     if (s) { ctx.strokeStyle = t < hitFlash ? '#ff5a3c' : '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(s[0], s[1], 13, 0, 6.3); ctx.moveTo(s[0] - 22, s[1]); ctx.lineTo(s[0] - 6, s[1]); ctx.moveTo(s[0] + 6, s[1]); ctx.lineTo(s[0] + 22, s[1]); ctx.moveTo(s[0], s[1] - 22); ctx.lineTo(s[0], s[1] - 6); ctx.stroke(); }
@@ -713,7 +765,7 @@ function drawHud(t) {
     : me.alive && me.dying ? 'Going down<small>out of control</small>'
     : me.alive && t - me.repairing < 0.4 ? `${me.onGround ? (me.speed < 6 ? 'Repairing and refuelling' : 'Repairing') : 'Ground crew at work'}<small>${me.onGround && me.speed >= 6 ? 'roll to a stop for faster repairs · ' : ''}${Math.round(100 * Math.min(me.hp / TYPES[me.type].hp, 1 - Math.max(...Object.values(me.dmg))))}% fit</small>`
     : me.alive && me.onGround && me.speed > 8 && me.throttle < 0.5 ? 'Not enough power<small>open the throttle further to lift off</small>'
-    : me.alive && me.onGround ? (me.throttle < 0.5 ? 'On the runway<small>open the throttle (Shift)</small>' : me.speed > TYPES[me.type].stall * 1.05 * flight.stall ? 'Flying speed<small>ease the stick back</small>' : '')
+    : me.alive && me.onGround ? (me.throttle < 0.5 ? 'On the runway<small>open the throttle (' + THROTTLE_KEY() + ')</small>' : me.speed > TYPES[me.type].stall * 1.05 * flight.stall ? 'Flying speed<small>ease the stick back</small>' : '')
     : me.alive && me.fire ? 'On fire<small>dive hard to blow it out</small>'
     : !me.alive ? `${me.fate || 'Crashed'}<small>back in the air in ${Math.max(0, Math.ceil(me.respawnAt - t))} s</small>`
     : oobSince ? 'Turn back<small>you are leaving the combat area</small>'
@@ -763,7 +815,7 @@ async function start() {
   } catch (err) { net?.close(); net = null; for (const p of [...planes.values()]) removePlane(p); $('status').textContent = err.message || String(err); $('go').disabled = false; }
 }
 initControls();
-setCamEase(camEase);
+setCamEase(camEase); applyKb();
 $('camease').addEventListener('input', e => setCamEase(e.target.value / 100));
 // the start screen is the Options dialog's first tab; it stays open until the game begins
 // ---- the Game tab while flying: change the setup without a restart ----

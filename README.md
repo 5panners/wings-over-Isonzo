@@ -232,3 +232,6 @@ Thunder uses three recorded claps (`assets/thunder1.mp3` to `thunder3.mp3`). One
 
 ## Win conditions
 The Game tab has **Kills to win** (Dogfight: anywhere from 3 to 20, default 10) and **Tickets per side** (Zeppelin Front: 50, 100, 150, 200, 300 or 500). The host chooses them and everyone follows. Losing an airship costs a third of the starting tickets, so it stays proportionate. Changing the kill target applies at once; changing the tickets restarts a Zeppelin Front round.
+
+## Keyboard and mouse controls
+The default scheme is Battlefield-style: click the game to capture the mouse, then the **mouse** pitches and rolls (it moves a virtual stick, shown as a dot in a ring, that drifts back to centre; the Controls tab has sensitivity and centring sliders, and centring 0 holds the stick wherever you leave it), **W / S** raise and lower the throttle, **A / D** are the rudder, **Q / E** roll, **left click** or **Space** fires the guns and **right click** or **R** fires a rocket. The arrow keys still pitch and roll. A **Classic** scheme (W S pitch, A D roll, Q E rudder, Shift / Ctrl throttle) is a menu choice on the Controls tab. Controller support is unchanged and works alongside either scheme.
