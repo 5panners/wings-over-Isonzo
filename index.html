@@ -63,6 +63,9 @@
   #controls h3 { font: 700 12px Inter, system-ui, sans-serif; letter-spacing: .16em; text-transform: uppercase; margin: 16px 0 6px; padding-bottom: 4px; border-bottom: 1.5px solid #1d1b16; }
   #controls .tabs { display: flex; gap: 6px; border-bottom: 2px solid #1d1b16; margin-bottom: 4px; }
   #controls .tabs button { border-bottom: 0; border-radius: 4px 4px 0 0; padding: 8px 18px; font-size: 14px; }
+  #controls .subtabs { display: flex; gap: 6px; margin: 4px 0 8px; }
+  #controls .subtabs button { padding: 5px 14px; font-size: 13px; border-radius: 14px; }
+  #controls .subtabs button.on { background: #1d1b16; color: #efe6cf; border-color: #1d1b16; }
   #controls .tabs button.on { background: #1d1b16; color: #efe6cf; border-color: #1d1b16; }
   #controls .keys { margin: 0; font-size: 13.5px; line-height: 1.7; } #controls .keys b { background: #fbf6e6; border: 1px solid #b9ab86; border-radius: 3px; padding: 0 5px; font-weight: 600; }
   #controls .note { grid-column: 1 / -1; margin: -8px 0 6px; font-size: 12.5px; color: #5b5444; }
@@ -107,7 +110,7 @@
 <canvas id="c"></canvas>
 <canvas id="hud"></canvas>
 <div id="fps" aria-label="Frames per second">-- FPS</div>
-<div id="build" aria-label="Build number">Build 83</div>
+<div id="build" aria-label="Build number">Build 84</div>
 <div id="ui">
   <div id="score" class="panel"></div>
   <div id="stats" class="panel"></div>
@@ -171,7 +174,8 @@
   </form>
   </div>
   <div id="tab-controls" role="tabpanel" hidden>
-    <h3>Keyboard and mouse</h3>
+    <div class="subtabs" role="tablist"><button type="button" data-sub="kbm" class="on">Keyboard and mouse</button><button type="button" data-sub="pad">Controller</button></div>
+    <div id="sub-kbm">
     <label for="kbscheme">Scheme</label>
     <select id="kbscheme"><option value="bf">Battlefield — the mouse flies, W / S are the throttle</option><option value="classic">Classic — the keyboard flies</option></select>
     <div class="sliders"><label>Mouse sensitivity <output id="msens-out"></output><input id="msens" type="range" min="20" max="300" step="10"></label>
@@ -181,8 +185,10 @@
     <h3>Camera</h3>
     <div class="sliders"><label>Camera smoothing <output id="camease-out"></output><input id="camease" type="range" min="0" max="100" step="5"></label>
       <p class="note">Low follows the aircraft tightly; high eases in and out. Also <b>,</b> and <b>.</b> in flight.</p></div>
-    <h3>Controller</h3>
-    <div id="controls-body"></div>
+    </div>
+    <div id="sub-pad" hidden>
+      <div id="controls-body"></div>
+    </div>
   </div>
   <div id="tab-flight" role="tabpanel" hidden>
     <p class="note" style="margin:6px 0 0">These change how <b>your</b> aircraft handles. Bots always fly the standard model, so in a shared battle each pilot can pick their own.</p>

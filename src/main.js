@@ -865,6 +865,11 @@ function applyLiveSetup() {
   say(changes.length ? 'Setup changed: ' + changes.join(', ') : 'No changes');
   toggleControls(false);
 }
+function showSub(name) {                                                    // Controls tab: keyboard and mouse, or the controller
+  for (const b of document.querySelectorAll('#tab-controls .subtabs button')) b.classList.toggle('on', b.dataset.sub === name);
+  $('sub-kbm').hidden = name !== 'kbm'; $('sub-pad').hidden = name !== 'pad';
+}
+document.querySelector('#tab-controls .subtabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) showSub(b.dataset.sub); });
 function showTab(name) {
   for (const t of document.querySelectorAll('#controls .tabs button')) t.classList.toggle('on', t.dataset.tab === name);
   for (const n of ['game', 'controls', 'flight', 'graphics', 'audio']) $('tab-' + n).hidden = n !== name;
