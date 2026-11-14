@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { makeFlagMesh, registerArm } from './flags.js';
+import { makeFlagMesh, registerArm, wind } from './flags.js';
 import { makeRocket } from './guns.js';
 import { lerp, rnd, H, railDist, riverX, riverLevel, riverHalf, sst, AIRFIELDS, TOWNS, SECTORS, TARGETS } from './world.js';
 
@@ -90,6 +90,38 @@ export function CAPRONI(f) {
 function parked(p, x, z, ry, lift = 1.5) { p.rotation.order = 'YXZ'; p.rotation.set(-0.2, ry, 0); p.position.set(x, H(x, z) + lift, z); return p; }
 
 // ============ balloons ============
+// The observation balloons ride the wind: they lean and drift downwind, turn their noses into it, and bob in the gusts. Rounds that strike
+// one shove it and set it spinning (rockets far harder), so they sway and swing back like a real tethered balloon.
+const BAL = [], BAL_R = 9.5, wrapA = a => Math.atan2(Math.sin(a), Math.cos(a)), Bv = new THREE.Vector3(), Bq = new THREE.Quaternion(), Yv = new THREE.Vector3(0, 1, 0);
+export function updateBalloons(dt, t, out) {
+  dt = Math.min(dt, 0.05); const dx = Math.cos(wind.angle), dz = Math.sin(wind.angle), ws = wind.speed;
+  BAL.forEach((s, i) => {
+    const gust = 0.5 + 0.5 * Math.sin(t * 0.9 + i * 2.1) * Math.sin(t * 0.37 + i), push = 1.5 + ws * 8 * (0.7 + 0.5 * gust), ty = -ws * 2 + Math.sin(t * 0.7 + i * 1.7) * 0.6;
+    s.vel.x += ((dx * push - s.off.x) * 1.3 - s.vel.x * 0.85) * dt; s.vel.z += ((dz * push - s.off.z) * 1.3 - s.vel.z * 0.85) * dt; s.vel.y += ((ty - s.off.y) * 1.8 - s.vel.y * 1.1) * dt;
+    s.off.addScaledVector(s.vel, dt);
+    const want = Math.atan2(-dx, -dz) + 0.14 * Math.sin(t * 0.8 + i * 2.3);                           // nose into the wind
+    s.yawVel += (wrapA(want - s.yaw) * 0.9 - s.yawVel * 0.5) * dt; s.yawVel = Math.max(-8, Math.min(8, s.yawVel)); s.yaw += s.yawVel * dt;
+    s.node.rotation.y = s.yaw;
+    s.pivot.rotation.set(THREE.MathUtils.clamp(s.off.z / 36 + s.vel.z * 0.03, -0.35, 0.35), 0, THREE.MathUtils.clamp(-s.off.x / 36 - s.vel.x * 0.03, -0.35, 0.35));
+    s.pivot.position.copy(s.base).add(s.off);
+    Bv.copy(s.pivot.position); Bv.y -= 21; Bv.sub(s.winch); const len = Bv.length(); s.cable.position.copy(s.winch); s.cable.quaternion.copy(Bq.setFromUnitVectors(Yv, Bv.multiplyScalar(1 / len))); s.cable.scale.set(1, len, 1);
+    const o = out?.[i]; if (o) { o.x = s.pivot.position.x; o.y = s.pivot.position.y; o.z = s.pivot.position.z; o.basketY = s.pivot.position.y - 20; }
+  });
+}
+// A round (a to b, travelling along v) striking a balloon: shoves and spins it. Returns the point on its surface, or null.
+const Sv = new THREE.Vector3(), Sw = new THREE.Vector3();
+export function strikeBalloon(a, b, v, rocket) {
+  for (const s of BAL) {
+    const c = s.pivot.position; Sv.copy(b).sub(a); const l2 = Sv.lengthSq() || 1e-6; Sw.copy(c).sub(a); const u = THREE.MathUtils.clamp(Sw.dot(Sv) / l2, 0, 1);
+    Sw.copy(a).addScaledVector(Sv, u).sub(c); if (Sw.lengthSq() > BAL_R * BAL_R) continue;
+    const pt = Sw.clone().setLength(BAL_R * 0.97).add(c), dir = Sv.clone().normalize(), power = rocket ? 5.5 : 0.28;
+    s.vel.addScaledVector(dir, power);
+    const rx = pt.x - c.x, rz = pt.z - c.z, torque = (rz * dir.x - rx * dir.z) / BAL_R;               // a glancing blow spins it, a head-on one mostly shoves
+    s.yawVel += (torque + (Math.random() - 0.5) * 0.6) * (rocket ? 4.2 : 0.55) + (rocket ? (Math.random() < 0.5 ? -1 : 1) * 1.2 : 0);
+    return pt;
+  }
+  return null;
+}
 function lobe(sx, sy, sz, c) { const m = mk(new THREE.SphereGeometry(1, 7, 5), c); m.scale.set(sx, sy, sz); return m; }
 function basket(g, y, pts, c = '#8a6a3a') { g.add(mk(B(1.3, 1.1, 1.3), c, 0, y, 0)); for (const p of pts) g.add(rod(p, [Math.sign(p[0]) * 0.6, y + 0.5, Math.sign(p[2]) * 0.6], 0.035, '#4a4034')); }
 export function balloon(type) {
@@ -297,9 +329,13 @@ export function buildObjects(scene) {
   // ---- balloons / sectors ----
   const balloons = {};
   for (const s of SECTORS) {
-    const gy = H(s.x, s.z), b = balloon(s.type); b.position.set(s.x, gy + s.alt, s.z); b.rotation.y = -1.1; b.scale.setScalar(2); scene.add(b); balloons[s.id] = b;
+    const gy = H(s.x, s.z), b = balloon(s.type); b.rotation.y = -1.1; b.scale.setScalar(2); balloons[s.id] = b;
     const wx = s.x + 9, wz = s.z + 7, wy = H(wx, wz);
-    scene.add(rod([s.x, gy + s.alt - 21, s.z], [wx, wy + 2.5, wz], 0.12, '#3d3a34'));
+    // the balloon rides in a pivot so it can lean downwind; its cable is redrawn every frame from the winch to the basket
+    const pivot = new THREE.Group(); pivot.position.set(s.x, gy + s.alt, s.z); pivot.add(b); scene.add(pivot);
+    const cableGeo = new THREE.CylinderGeometry(0.12, 0.12, 1, 5); cableGeo.translate(0, 0.5, 0);
+    const cable = new THREE.Mesh(cableGeo, mat('#3d3a34')); cable.position.set(wx, wy + 2.5, wz); cable.frustumCulled = false; scene.add(cable);
+    BAL.push({ pivot, node: b, cable, base: new THREE.Vector3(s.x, gy + s.alt, s.z), winch: new THREE.Vector3(wx, wy + 2.5, wz), off: new THREE.Vector3(), vel: new THREE.Vector3(), yaw: -1.1, yawVel: 0, id: s.id });
     put(winch(s.own === 'ah' ? 'ah' : 'it'), wx, wz, 0.6);
     for (const [dx, dz] of [[-16, 10], [14, -15], [22, 12]]) put(flak(s.own === 'ah' ? 'ah' : 'it'), s.x + dx, s.z + dz);
     put(tent(), s.x + 4, s.z + 13); put(tent(), s.x + 8, s.z + 16);

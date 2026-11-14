@@ -141,19 +141,45 @@ export function createRailway(scene, fx = {}) {
     const g = new THREE.Group(); g.visible = false; let off = 0; const parts = [];
     for (const c of cars) { const v = new THREE.Group(); v.add(c.mesh); if (c.win) v.add(c.win); g.add(v); off += c.hl; parts.push({ v, hl: c.hl, off, chimney: c.chimney }); off += c.hl + 0.6; }
     const lamp = lampGlow.clone(); lamp.position.set(0, 2.75, 4.1); parts[0].v.add(lamp); parts[0].lamp = [lamp];
-    root.add(g); return (consists[kind] = { g, parts, len: off - 0.6, lit: kind !== 'freight' });
+    const mats = []; for (const p of parts) p.v.traverse(o => { if (o.isMesh && o.material === TRAIN_MAT) { o.material = TRAIN_MAT.clone(); mats.push(o.material); } });
+    root.add(g); return (consists[kind] = { g, parts, mats, len: off - 0.6, lit: kind !== 'freight' });
   }
 
   // ---- the timetable: a train every CYCLE seconds, alternating direction ----
-  const run = { idx: -1, kind: null }, a = {}, b = {}; let smokeAt = 0, chuff = 0;
-  const state = { active: false, pos: new THREE.Vector3(), speed: SPEED, kind: null };
+  const run = { idx: -1, kind: null, hp: 0, dead: false, frozen: 0, until: 0, lastHead: 0 }, a = {}, b = {}; let smokeAt = 0, chuff = 0, wreckAt = 0;
+  const state = { active: false, dead: false, pos: new THREE.Vector3(), speed: SPEED, kind: null };
+  const HP = 240, WRECK_SECS = 55, clock = () => globalThis.__railTime ?? Date.now() / 1000;
+  const paint = (c, hex) => { for (const m of c.mats) m.color.set(hex); for (const p of c.parts) if (p.win) p.win.visible = hex === '#ffffff'; };
+  // the train is shot to pieces: it stops where it is, goes up in a chain of explosions and burns for a while; the next timetabled train is a new one
+  function destroy(sendIt) {
+    if (run.dead || !run.kind) return; const c = consists[run.kind]; if (!c || !c.g.visible) return;
+    run.dead = true; run.frozen = run.lastHead; run.until = clock() + WRECK_SECS; state.dead = true; paint(c, '#2b2724');
+    [0, Math.floor(c.parts.length / 2), c.parts.length - 1].forEach((k, n) => setTimeout(() => { const v = c.parts[k].v; if (v.visible) fx.explode?.(v.position.clone().add(new THREE.Vector3(0, 2, 0))); }, n * 380));
+    if (sendIt) fx.send?.({ t: 'tk', idx: run.idx });
+  }
+  function damage(d, idx) { if (idx !== undefined && idx !== run.idx) return; if (run.dead || !state.active) return; run.hp -= d; if (run.hp <= 0) destroy(true); }
+  function kill(idx) { if (idx === run.idx) destroy(false); }
+  // does the segment p -> q pass through any vehicle? (returns true so the round stops there; damage is applied separately)
+  function strike(p, q) {
+    if (!state.active && !run.dead) return false; const c = consists[run.kind]; if (!c || !c.g.visible) return false;
+    for (const part of c.parts) { if (!part.v.visible) continue;
+      b.x = q.x - p.x; b.y = q.y - p.y; b.z = q.z - p.z; const L2 = b.x * b.x + b.y * b.y + b.z * b.z || 1e-6, cx = part.v.position.x - p.x, cy = part.v.position.y + 1.8 - p.y, cz = part.v.position.z - p.z;
+      const u = Math.max(0, Math.min(1, (cx * b.x + cy * b.y + cz * b.z) / L2)), ex = cx - b.x * u, ey = cy - b.y * u, ez = cz - b.z * u, r = part.hl * 0.55 + 1.8;
+      if (ex * ex + ey * ey + ez * ez < r * r) return true; }
+    return false;
+  }
   function update(dt, t, night = 0) {
-    const secs = globalThis.__railTime ?? Date.now() / 1000, idx = Math.floor(secs / CYCLE), tp = secs - idx * CYCLE, dir = idx % 2 ? 1 : -1;
-    if (idx !== run.idx) { run.idx = idx; run.kind = night > 0.5 ? 'sleeper' : idx % 3 === 0 ? 'freight' : 'passenger'; for (const k in consists) consists[k].g.visible = false; state.kind = run.kind; }
-    const c = consist(run.kind), head = tp * SPEED, done = head - c.len > total + 6;                // head: how far the engine has come since it entered
-    c.g.visible = state.active = !done;
+    const secs = clock(), idx = Math.floor(secs / CYCLE), tp = secs - idx * CYCLE, dir = idx % 2 ? 1 : -1;
+    if (idx !== run.idx) {
+      if (run.kind && consists[run.kind]) paint(consists[run.kind], '#ffffff');
+      run.idx = idx; run.kind = night > 0.5 ? 'sleeper' : idx % 3 === 0 ? 'freight' : 'passenger'; run.hp = HP; run.dead = false; state.dead = false;
+      for (const k in consists) consists[k].g.visible = false; state.kind = run.kind;
+    }
+    const c = consist(run.kind), live = tp * SPEED; if (!run.dead) run.lastHead = live;
+    const head = run.dead ? run.frozen : live, done = run.dead ? secs > run.until : live - c.len > total + 6;       // head: how far the engine has come since it entered
+    c.g.visible = !done; state.active = !done && !run.dead;
     if (done) return;
-    const winLit = c.lit ? night : 0; windowMat.color.setRGB(0.09 + 0.91 * winLit, 0.13 + 0.67 * winLit, 0.17 + 0.25 * winLit * 0.5);
+    const winLit = c.lit && !run.dead ? night : 0; windowMat.color.setRGB(0.09 + 0.91 * winLit, 0.13 + 0.67 * winLit, 0.17 + 0.25 * winLit * 0.5);
     for (const [i, p] of c.parts.entries()) {
       const s = dir > 0 ? head - p.off : total - head + p.off, sf = s + dir * p.hl * 0.75, sr = s - dir * p.hl * 0.75;       // front and rear ends along the line
       const on = s > -2 && s < total + 2; p.v.visible = on; if (!on) continue;
@@ -162,14 +188,19 @@ export function createRailway(scene, fx = {}) {
       const dx = (a.x - b.x) * dir, dz = (a.z - b.z) * dir, dy = (a.y - b.y) * dir, hz = Math.hypot(dx, dz) || 1;       // direction of travel
       p.v.rotation.set(-Math.atan2(dy, hz), Math.atan2(dx, dz), 0, 'YXZ');
       if (i === 0) {
-        const lamps = p.lamp; if (lamps) for (const m of lamps) m.visible = night > 0.35;
+        const lamps = p.lamp; if (lamps) for (const m of lamps) m.visible = night > 0.35 && !run.dead;
         state.pos.copy(p.v.position);
-        if (t > smokeAt && fx.puff) {                                                // steam from the chimney, and a heavier puff with each chuff
-          smokeAt = t + 0.22; const ch = p.v.localToWorld(new THREE.Vector3(0, 4.1, 3.2)); fx.puff(ch, '#d9d9d6', 1.5 + Math.random(), 2.4, 3.2, 0.4);
+        if (!run.dead && t > smokeAt && fx.puff) {                                   // steam from the chimney, and a heavier puff with each chuff; dark and thick when it is badly hit
+          smokeAt = t + 0.22; const ch = p.v.localToWorld(new THREE.Vector3(0, 4.1, 3.2)), hurt = run.hp < HP * 0.6; fx.puff(ch, hurt ? '#3a3836' : '#d9d9d6', (hurt ? 2.4 : 1.5) + Math.random(), 2.4, 3.2, 0.4);
           if ((chuff++ & 1) === 0 && fx.chuff) fx.chuff(p.v.position);
         }
       }
     }
+    if (run.dead && t > wreckAt && fx.puff) {                                         // the wreck burns
+      wreckAt = t + 0.09; const vis = c.parts.filter(q => q.v.visible); if (vis.length) { const v = vis[Math.floor(Math.random() * vis.length)].v, w = v.position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 3, 2.5 + Math.random() * 1.5, (Math.random() - 0.5) * 3));
+        fx.puff(w, Math.random() < 0.5 ? '#232120' : '#3c3936', 3 + Math.random() * 3, 3.5 + Math.random() * 2, 4 + Math.random() * 3, 2);
+        if (Math.random() < 0.6) { const f = fx.puff(w, Math.random() < 0.5 ? '#ff8a2a' : '#ffc24a', 1.4 + Math.random() * 1.6, 0.5 + Math.random() * 0.4, 2.5, 2); if (f) f.glow = true; } }
+    }
   }
-  return { update, root, line: () => P, total, state, at };
+  return { update, root, line: () => P, total, state, at, strike, damage, kill, get idx() { return run.idx; } };
 }

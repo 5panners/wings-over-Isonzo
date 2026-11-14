@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { buildTerrain } from './terrain.js';
 import { createDayNight } from './daynight.js';
-import { buildObjects, updateWindows, updateNavLights } from './objects.js';
+import { buildObjects, updateWindows, updateNavLights, updateBalloons, strikeBalloon } from './objects.js';
 import { AIRFIELDS, SECTORS, riverX, HALF, HALF_X, H, coastZ, coastW, coastE } from './world.js';
-import { Plane, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, BOT_LEVELS, botSettings, COLLIDE_RADIUS, overOwnField, flight, setFlight, FLIGHT_DEFAULT, ZONE_TEXT, zoneAt, takeHit, systems, startDying, flyPlayer, flyBot, flyRemote, hooks } from './plane.js';
+import { Plane, BALLOONS, TYPES, TEAM_TYPE, TEAM_NAME, TEAM_COLOR, GUN, BOT_LEVELS, botSettings, COLLIDE_RADIUS, overOwnField, flight, setFlight, FLIGHT_DEFAULT, ZONE_TEXT, zoneAt, takeHit, systems, startDying, flyPlayer, flyBot, flyRemote, hooks } from './plane.js';
 import { updateFlags } from './flags.js';
 import { createWeather, WEATHER } from './weather.js';
 import { createRailway } from './railway.js';
@@ -38,7 +38,7 @@ const weather = createWeather(scene, { sky, camera, clouds, fx: { light: (p, pea
 const pickup = createPickup(scene);          // the one rocket pickup, see pickup.js
 buildObjects(scene).setMode({ map: false, rings: false, flights: [], lineup: false });
 const trails = createTrails(scene, camera);          // coloured vapour from the wingtips of aircraft in a fast dive
-const railway = createRailway(scene, { puff: (p, c, sz, life, rise, spread) => puff(p, c, sz, life, rise, spread) });          // the line, its viaducts and the trains
+const railway = createRailway(scene, { puff: (p, c, sz, life, rise, spread) => puff(p, c, sz, life, rise, spread), explode: p => explode(p), send: m => net?.send(m) });          // the line, its viaducts and the trains
 { const s = sun.shadow.camera; s.near = 100; s.far = 4500; }   // its width is set every frame by sky.update
 const hud = $('hud'), ctx = hud.getContext('2d');
 function resize() {
@@ -226,6 +226,8 @@ function onMessage(m, from) {
   } else if (m.t === 'k') onKill(m.v, m.by, m.c);
   else if (m.t === 'rk') { bullets.push({ p: new THREE.Vector3(...m.o), v: new THREE.Vector3(...m.v), life: ROCKET.life, by: m.by, team: m.team, real: false, rocket: true }); rocketSound(new THREE.Vector3(...m.o).distanceTo(camera.position)); }   // somebody else's rocket, shown here
   else if (m.t === 'pc' && isHost()) pickup.clear(now());                       // somebody took the pickup
+  else if (m.t === 'tr') railway.damage(+m.d || 0, m.idx);                      // somebody shot the train
+  else if (m.t === 'tk') railway.kill(m.idx);                                      // and it blew up
   else if (m.t === 'zx' && isHost() && mode === 'front') front.damage(m.s, m.c | 0, Math.min(+m.d || 0, 250), m.by);   // a player's rounds struck an airship
 }
 function onLeave(id) { flying.delete(id); for (const p of [...planes.values()]) if (p.owner === id && !p.local) { if (!p.isBot) say(`${label(p.id)} left`); removePlane(p); } }
@@ -314,6 +316,7 @@ function frame() {
   updateEffects(dt);
   railway.update(dt, t, sky.night);
   updateFlags(t, dt);
+  updateBalloons(dt, t, BALLOONS);
   updateWindows(sky.night, sky.tod);
   updateNavLights(sky.night, t);
   updateWater(t, sun, hemi);
@@ -407,6 +410,16 @@ function step(t, dt) {
         }
         bullets.splice(i, 1); continue;
       }
+    }
+    if (!hit) {                                                 // the train, then the observation balloons: any round stops on them
+      BE.copy(b.p).add(V);
+      if (railway.strike(b.p, BE)) {
+        if (b.real) { const d = b.rocket ? 120 : (b.dmg ?? GUN.damage); railway.damage(d); net?.send({ t: 'tr', idx: railway.idx, d }); }
+        if (b.rocket) rocketBurst(BE, true); else hitBurst(BE, b.by === me?.id, t);
+        bullets.splice(i, 1); continue;
+      }
+      const bp = strikeBalloon(b.p, BE, b.v, !!b.rocket);
+      if (bp) { if (b.rocket) rocketBurst(bp, true); else hitBurst(bp, b.by === me?.id, t); bullets.splice(i, 1); continue; }
     }
     b.p.add(V);
     if (hit) {

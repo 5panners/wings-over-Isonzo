@@ -217,3 +217,6 @@ Press **F9** to detach the camera. The mouse looks around (the pointer is captur
 
 ## Vapour trails
 An aircraft diving faster than 200 km/h trails coloured vapour from both wingtips (blue for Italy, red for Austria-Hungary), which tapers to a point and fades over a couple of seconds. It applies to every aircraft, bots and other players included.
+
+## Shooting the train and the balloons
+The train can be destroyed: any round that strikes it does damage (240 points; two rockets, about ten cannon shells or a long burst of machine-gun fire). When it goes it stops, blows up in a chain of explosions, goes dark and burns for about a minute, then the timetable brings a fresh train at its next departure. The damage and the explosion are shared with other players. The observation balloons now ride the wind, leaning and drifting downwind with their noses into it, with the cable following. Rounds that hit one burst on its surface and shove it; a rocket also sets it spinning, and it swings back afterwards.
