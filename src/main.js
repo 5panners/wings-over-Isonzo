@@ -787,6 +787,7 @@ function drawHud(t) {
     + (me.fire ? '<b style="color:#ff7a5c">ON FIRE</b>' : '');
   { const show = keys.has('Tab') || !!winner();                                    // hold Tab, or it appears when a round is won
     const bd = $('board'); bd.style.display = show ? 'block' : 'none';
+    { const low = !!$('msg').textContent.trim(); bd.style.top = low ? 'calc(30% + 100px)' : '96px'; bd.style.maxHeight = low ? 'calc(70% - 190px)' : 'calc(100vh - 240px)'; }          // sit below a banner such as who won the round, never under it
     if (show && t - boardAt > 0.25) { boardAt = t;
       const rows = new Map(); for (const p of planes.values()) rows.set(p.id, rec(p.id)); for (const [id, r] of stats) if (!rows.has(id)) rows.set(id, r);
       const list = [...rows.entries()].sort((x, y) => y[1].kills - x[1].kills || x[1].deaths - y[1].deaths || x[1].name.localeCompare(y[1].name));
