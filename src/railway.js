@@ -113,7 +113,7 @@ export function createRailway(scene, fx = {}) {
   }
   function carriage(body, band, roof, lit = true) {
     const p = new Parts(), w = new Parts();
-    p.add(new THREE.BoxGeometry(1.8, 0.3, 7.2), '#1c1c1e', 0, 0.75, 0).add(new THREE.BoxGeometry(2.3, 2.2, 7.2), body, 0, 2.0, 0).add(new THREE.CylinderGeometry(1.15, 1.15, 7.2, 8, 1, false, 0, Math.PI), roof, 0, 3.1, 0, HALF, 0, HALF, 1, 1, 0.35)
+    p.add(new THREE.BoxGeometry(1.8, 0.3, 7.2), '#1c1c1e', 0, 0.75, 0).add(new THREE.BoxGeometry(2.3, 2.2, 7.2), body, 0, 2.0, 0).add(new THREE.BoxGeometry(2.3, 0.22, 7.2), roof, 0, 3.2, 0).add(new THREE.BoxGeometry(1.7, 0.2, 6.9), roof, 0, 3.4, 0)
       .add(new THREE.BoxGeometry(2.34, 0.16, 7.22), band, 0, 2.55, 0).add(new THREE.BoxGeometry(2.34, 0.16, 7.22), band, 0, 1.45, 0);
     for (const z of [-2.4, 2.4]) { p.add(new THREE.BoxGeometry(1.7, 0.4, 2.3), '#1c1c1e', 0, 0.6, z); wheels(p, 0, 0.4, [z - 0.8, z + 0.8], 0.82); }
     if (lit) for (const z of [-2.9, -1.75, -0.6, 0.6, 1.75, 2.9]) for (const s of [-1, 1]) w.add(new THREE.BoxGeometry(0.08, 0.72, 0.72), '#ffffff', s * 1.16, 2.1, z);
