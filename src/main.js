@@ -409,7 +409,7 @@ function step(t, dt) {
     if (hit) {
       hitBurst(b.p, b.by === me?.id, t); if (b.shell) shellStats.hit++;
       if (hit.local) damage(hit, b.dmg ?? GUN.damage, b.by, where); else net?.send({ t: 'x', to: hit.id, by: b.by, d: b.dmg ?? GUN.damage, z: where }, hit.owner);
-      if (b.by === me?.id) { hitFlash = t + 0.12; hitScoredSound(); }
+      if (b.by === me?.id) { hitFlash = t + 0.12; hitScoredSound(); if (hit !== me && hit.team !== me.team) hit.hpTag = { at: t, hp: Math.max(0, (hit.local ? hit.hp : hit.hp - (b.dmg ?? GUN.damage))) }; }
     }
     if (hit || b.life <= 0) { if (b.shell) shellBurst(b.p, !!hit); if (b.rocket) rocketBurst(b.p, !!hit); bullets.splice(i, 1); }
   }
@@ -607,6 +607,18 @@ function drawHud(t) {
     };
     for (const side of ['it', 'ah']) { const s = front.ships[side]; if (!s.crashed) mark(s.pos, TEAM_COLOR[side], side === me.team ? 'Our airship' : 'Enemy airship', 'ship'); }
     mark(V2.set(POINT.x, POINT.y + 20, POINT.z).clone(), TEAM_TINT[front.point.owner || 'none'], POINT.name, 'point');
+  }
+  // a brief health bar above an enemy aircraft you have just hit
+  for (const p of planes.values()) {
+    const tg = p.hpTag; if (!tg) continue; const age = t - tg.at;
+    if (age > 1.8 || !p.alive || p.dying) { if (age > 1.8) p.hpTag = null; continue; }
+    tg.hp = Math.min(tg.hp, p.hp);                              // the owner's own figure takes over once it arrives
+    const s = proj(V2.copy(p.pos).add(V.set(0, 7, 0))); if (!s) continue;
+    const f = Math.max(0, Math.min(1, tg.hp / TYPES[p.type].hp)), w = 54, h = 7, x = s[0] - w / 2, y = s[1] - 22;
+    ctx.save(); ctx.globalAlpha = Math.min(1, (1.8 - age) / 0.5) * 0.95;
+    ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+    ctx.fillStyle = f > 0.5 ? '#9fd08a' : f > 0.2 ? '#f0c05a' : '#ff6a4c'; ctx.fillRect(x, y, w * f, h);
+    ctx.restore();
   }
   if (me.alive && !me.dying) {                                 // gunsight
     const s = proj(V2.copy(me.pos).addScaledVector(me.fwd, 190));
