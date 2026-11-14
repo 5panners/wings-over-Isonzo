@@ -79,7 +79,7 @@ const waterUniforms = {
 };
 const waterMaterial = (river, shallow, deep) => new THREE.ShaderMaterial({
   fog: true,
-  uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), ...waterUniforms, uRiver: { value: river ? 1 : 0 }, uShallow: { value: new THREE.Color(shallow) }, uDeep: { value: new THREE.Color(deep) } },
+  uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), ...waterUniforms, uRiver: { value: river ? 1 : 0 }, uSeaShallow: { value: new THREE.Color('#55d0c4') }, uShallow: { value: new THREE.Color(shallow) }, uDeep: { value: new THREE.Color(deep) } },
   vertexShader: `
     varying vec3 vWorld; varying vec2 vUv;
     #include <fog_pars_vertex>
@@ -89,7 +89,7 @@ const waterMaterial = (river, shallow, deep) => new THREE.ShaderMaterial({
       #include <fog_vertex>
     }`,
   fragmentShader: `
-    uniform float uTime, uRiver; uniform vec3 uSunDir, uSunCol, uAmbSky, uAmbGnd, uSky, uShallow, uDeep;
+    uniform float uTime, uRiver; uniform vec3 uSunDir, uSunCol, uAmbSky, uAmbGnd, uSky, uShallow, uDeep, uSeaShallow;
     varying vec3 vWorld; varying vec2 vUv;
     #include <fog_pars_fragment>
     float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -102,11 +102,12 @@ const waterMaterial = (river, shallow, deep) => new THREE.ShaderMaterial({
       float tri = step(f.x, f.y), h1 = hash(cell + tri * 17.3), h2 = hash(cell * 1.7 + tri * 5.1 + 3.0);
       float amp = (uRiver > 0.5 ? 0.13 : 0.14) * (1.0 - smoothstep(250.0, 1000.0, dist));     // calm down far away so it does not sparkle into noise
       vec3 n = normalize(vec3(sin(uTime * (0.8 + h1) + h1 * 6.283) * amp, 1.0, cos(uTime * (0.7 + h2) + h2 * 6.283) * amp));
-      float depth, foam;
+      float depth, foam, mouth = 0.0;
       if (uRiver > 0.5) {
+        mouth = smoothstep(470.0, 565.0, vWorld.z);                                            // near the sea the river takes on the sea's own colour
         float e = abs(vUv.x * 2.0 - 1.0);                                                    // 0 mid-stream, 1 at the bank
         depth = 1.0 - smoothstep(0.35, 1.0, e);
-        foam = smoothstep(0.84, 1.0, e) * step(0.5, h2) * 0.45;                              // broken white water along the gravel
+        foam = smoothstep(0.84, 1.0, e) * step(0.5, h2) * 0.45 * (1.0 - mouth);                              // broken white water along the gravel
       } else {
         // distance offshore from the nearest of the three coasts (same formulas as coastZ / coastW / coastE in world.js)
         float x = vWorld.x, z = vWorld.z;
@@ -118,7 +119,7 @@ const waterMaterial = (river, shallow, deep) => new THREE.ShaderMaterial({
         foam = smoothstep(0.72, 1.0, sin(d * 0.5 - uTime * 1.2 + h1 * 1.6)) * (1.0 - smoothstep(2.0, 38.0, d)) * step(-14.0, d) * 0.85;   // surf lines
       }
       vec3 light = uSunCol * max(dot(n, uSunDir), 0.0) + mix(uAmbGnd, uAmbSky, 0.5 + 0.5 * n.y);
-      vec3 col = mix(uShallow, uDeep, depth) * (0.93 + 0.14 * h1) * light * 0.3183;
+      vec3 col = mix(mix(uShallow, uDeep, depth), uSeaShallow, mouth) * (0.93 + 0.14 * h1) * light * 0.3183;
       col = mix(col, uSky, pow(1.0 - max(dot(n, V), 0.0), 4.0) * 0.65);                      // sky reflection at grazing angles
       col += uSunCol * pow(max(dot(reflect(-uSunDir, n), V), 0.0), 80.0) * 0.8;              // glint
       col = mix(col, light * 0.3, foam);
@@ -129,7 +130,7 @@ const waterMaterial = (river, shallow, deep) => new THREE.ShaderMaterial({
 });
 {
   const pos = [], uv = [], step = 7;
-  for (let z = -975; z < 600; z += step) {
+  for (let z = -975; z < 572; z += step) {
     const q = zz => [riverX(zz) - riverHalf(zz) - 2.2, riverX(zz) + riverHalf(zz) + 2.2, riverLevel(zz) + 0.05];
     const [l0, r0, y0] = q(z), [l1, r1, y1] = q(z + step);
     pos.push(l0, y0, z, l1, y1, z + step, r1, y1, z + step, l0, y0, z, r1, y1, z + step, r0, y0, z);

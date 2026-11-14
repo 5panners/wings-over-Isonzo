@@ -24,7 +24,7 @@ export const HALF = 750;                 // combat area reaches ±750 north-sout
 export const HALF_X = 1350;              // and ±1350 east-west, out past the coasts
 export const riverX = z => -20 + 70 * Math.sin(z / 160 + 0.5) + 35 * Math.sin(z / 70 + 2);
 export const riverLevel = z => Math.max(0, (520 - z) / 1420 * 62);
-export const riverHalf = z => lerp(5, 13, sst(-500, 400, z));
+export const riverHalf = z => lerp(5, 13, sst(-500, 400, z)) + 9 * sst(470, 570, z);        // widens into an estuary at the sea
 // Coastlines. The land is bounded by sea to the south, west and east. Each coast is a sum of unrelated sine
 // waves, which gives an irregular run of bays and headlands and can be repeated exactly in the water shader.
 export const coastZ = x => 545 + 28 * Math.sin(x / 170 + 1) - 60 * sst(60, 400, x) + 16 * Math.sin(x / 63 + 2.2) + 34 * Math.sin(x / 410 + 0.4);   // south coast: z of the shore at x
@@ -113,6 +113,8 @@ function baseH(x, z) {                                  // the landscape before 
   const s = inland(x, z);
   h = 1.1 + (h - 1.1) * Math.pow(sst(0, 230, s), 0.85);
   h = lerp(h, -7, sst(10, -30, s));
+  // the river keeps its channel right through the beach, below sea level at the mouth, so it runs out into the sea instead of disappearing under sand
+  { const k = 1 - sst(130, 260, s); if (k > 0) h = lerp(h, lerp(Math.min(h, lvl - 3), h, sst(rw - 1.5, rw + 3.5, ad)), k); }
   return h;
 }
 
