@@ -132,7 +132,7 @@ const planes = new Map();
 const score = { it: 0, ah: 0 };
 let heard = null;          // the latest settings message from a battle in progress, heard while joining
 let onRunway = true;       // start (and restart) on the runway instead of in the air; the host's choice also applies to its bots
-let scoreLimit = 30;                                       // kills that win a Dogfight (adjustable)
+let scoreLimit = 10;                                       // kills that win a Dogfight (adjustable)
 let me = null, net = null, teamSize = 4, roundEndAt = 0, nextSend = 0, nextBotCheck = 0, running = false, oobSince = 0;
 const feed = [];
 // The host runs the bots, the clock and the objectives. It is the flying player with the lowest id: a player still on
@@ -730,7 +730,7 @@ if (!$('name').value) $('name').value = localStorage.getItem('woi-name') || 'Pil
 async function start() {
   startSound();
   const name = $('name').value.trim().slice(0, 20) || 'Pilot', password = $('pw').value, relay = $('relay').value.trim();
-  teamSize = THREE.MathUtils.clamp(+$('size').value || 4, 1, MAX_PER_TEAM); scoreLimit = +$('kills').value || 30; front.setStartTickets(+$('tickets').value || 150);
+  teamSize = THREE.MathUtils.clamp(+$('size').value || 4, 1, MAX_PER_TEAM); scoreLimit = +$('kills').value || 10; front.setStartTickets(+$('tickets').value || 150);
   onRunway = $('startpos').value === 'runway';
   weather.set($('weather').value, true);
   setMode($('mode').value);                                                    // switched to the host's mode if joining a battle
@@ -795,7 +795,7 @@ function applyLiveSetup() {
   if (f.startpos !== applied.startpos) { onRunway = f.startpos === 'runway'; changes.push(onRunway ? 'you start on the runway' : 'you start in the air'); }
   if (host) {
     const restart = f.mode !== applied.mode || f.size !== applied.size || (f.mode === 'front' && f.tickets !== applied.tickets);
-    if (f.kills !== applied.kills) { scoreLimit = +f.kills || 30; changes.push(`Dogfight is first to ${scoreLimit} kills`); }
+    if (f.kills !== applied.kills) { scoreLimit = +f.kills || 10; changes.push(`Dogfight is first to ${scoreLimit} kills`); }
     if (f.tickets !== applied.tickets) { front.setStartTickets(+f.tickets); changes.push(`${front.startTickets} tickets each in Zeppelin Front`); }
     if (f.bots !== applied.bots) { botSettings.level = THREE.MathUtils.clamp(+f.bots | 0, -1, BOT_LEVELS.length - 1); changes.push('bots: ' + $('bots').selectedOptions[0].textContent.split(' — ')[0].toLowerCase()); }
     if (f.time !== applied.time) { sky.tod = +f.time; changes.push('time ' + sky.clock()); }
