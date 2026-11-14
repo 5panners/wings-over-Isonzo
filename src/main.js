@@ -351,7 +351,7 @@ function step(t, dt) {
       if (why) goDown(p, null, why);
       const inp = p === me ? readInput() : null, crash = p === me ? (god.on ? null : flyPlayer(p, inp, dt)) : flyBot(p, planes, t, dt);
       if (inp && inp.rocket) fireRocket(p, t);
-      if (p.event) { if (p === me) say(p.event + (overOwnField(p.team, p.pos.x, p.pos.z) ? '. Roll to a stop to repair and refuel' : '')); p.event = null; }
+      if (p.event) { if (p === me) say(p.event + (overOwnField(p.team, p.pos.x, p.pos.z) && needsRepair(p) ? '. Roll to a stop to repair and refuel' : '')); p.event = null; }
       if (p === me && !p.onGround && !p.dying && weather.turbulence > 0.01) {                      // rough air: the aircraft is shaken about, as in Home Skies 1917
         const tb = weather.turbulence * flight.turb * dt;
         p.quat.multiply(TB1.setFromAxisAngle(Zax, (Math.sin(t * 1.7) + Math.sin(t * 4.3 + 1)) * 0.22 * tb)).multiply(TB2.setFromAxisAngle(XAX, (Math.sin(t * 2.3 + 2) + Math.sin(t * 5.1)) * 0.12 * tb)); p.quat.normalize();
@@ -454,11 +454,13 @@ let hitFlash = 0;
 // Ground crews at your own airfield: rolled out and nearly stopped, they repair and refuel quickly; still rolling,
 // or on a low pass over the strip (under 20 m above it), more slowly.
 const REPAIR_FAST = 0.4, REPAIR_SLOW = 0.15, LOW_PASS = 20;     // share of full health restored per second
+// an aircraft that is whole and (nearly) fully fuelled has nothing for the ground crew to do
+const needsRepair = p => p.hp < TYPES[p.type].hp - 0.5 || p.fuel < 0.95 || p.fire || Object.values(p.dmg).some(v => v > 0.01);
 function repair(p, t, dt) {
   if (!p.alive || p.dying || !overOwnField(p.team, p.pos.x, p.pos.z)) return;
   if (!p.onGround && p.pos.y - H(p.pos.x, p.pos.z) > LOW_PASS) return;
   const rate = (p.onGround && p.speed < 6 ? REPAIR_FAST : REPAIR_SLOW) * dt, max = TYPES[p.type].hp, D = p.dmg;
-  const needed = p.hp < max || p.fuel < 1 || p.fire || Object.values(D).some(v => v > 0);
+  const needed = needsRepair(p);
   if (!needed) { if (p === me && p.repairing > 0 && t - p.repairing < 0.5) say('Repairs complete'); p.repairing = -9; return; }
   p.hp = Math.min(max, p.hp + max * rate); p.fuel = Math.min(1, p.fuel + rate);
   for (const z in D) D[z] = Math.max(0, D[z] - rate);
