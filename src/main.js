@@ -585,7 +585,7 @@ function drawHud(t) {
     if (pp) {
       const d = pp.distanceTo(me.pos), s = proj(pp), pulse = 0.5 + 0.5 * Math.sin(t * 5);
       ctx.fillStyle = ctx.strokeStyle = `rgba(255, ${200 + 40 * pulse | 0}, 70, 1)`; ctx.lineWidth = 2.5;
-      if (s && s[0] > 0 && s[0] < W && s[1] > 0 && s[1] < Hh) { ctx.beginPath(); ctx.arc(s[0], s[1], 26 + 6 * pulse, 0, 6.3); ctx.stroke(); ctx.shadowColor = '#000'; ctx.shadowBlur = 4; ctx.fillStyle = '#fff'; ctx.fillText(`ROCKETS  ${Math.round(d)} m`, s[0], s[1] - 40); ctx.shadowBlur = 0; }
+      if (s && s[0] > 0 && s[0] < W && s[1] > 0 && s[1] < Hh) { ctx.shadowColor = '#000'; ctx.shadowBlur = 4; ctx.fillStyle = '#fff'; ctx.fillText(`ROCKETS  ${Math.round(d)} m`, s[0], s[1] - 40); ctx.shadowBlur = 0; }
       else if (!me.dying) { V.copy(pp).applyMatrix4(camera.matrixWorldInverse); const a = Math.atan2(-V.y, V.x), R = Math.min(W, Hh) * 0.4 + 46, ax = W / 2 + Math.cos(a) * R, ay = Hh / 2 + Math.sin(a) * R;
         ctx.save(); ctx.translate(ax, ay); ctx.rotate(a); ctx.beginPath(); ctx.moveTo(17, 0); ctx.lineTo(-8, 11); ctx.lineTo(-8, -11); ctx.closePath(); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.restore();
         ctx.fillStyle = '#fff'; ctx.shadowColor = '#000'; ctx.shadowBlur = 4; ctx.fillText(`ROCKETS ${Math.round(d)} m`, ax - Math.cos(a) * 44, ay - Math.sin(a) * 44 + 4); ctx.shadowBlur = 0; }
