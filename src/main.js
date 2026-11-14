@@ -155,7 +155,7 @@ const nameOf = id => (isGunners(id) ? `${SIDE_NAME[id.slice(4)] || ''} airship g
 const label = id => { const p = planes.get(id), team = p ? p.team : isGunners(id) ? id.slice(4) : null; return team && nameOf(id) ? `<b style="color:${TEAM_COLOR[team]}">${nameOf(id)}</b>` : 'someone'; };
 
 // ---- the scoreboard: kills and deaths per pilot (bots included), counted from the kill messages every player receives ----
-const stats = new Map(); let boardAt = -9;
+const stats = new Map(); let boardAt = -9, wasWon = false;
 function rec(id) {
   const p = planes.get(id); let r = stats.get(id); if (!r) stats.set(id, r = { name: p?.name || nameOf(id) || id, team: p?.team || null, kills: 0, deaths: 0 });
   if (p) { r.name = p.name; r.team = p.team; } return r;
@@ -440,6 +440,8 @@ function step(t, dt) {
     }
     if (hit || b.life <= 0) { if (b.shell) shellBurst(b.p, !!hit); if (b.rocket) rocketBurst(b.p, !!hit); bullets.splice(i, 1); }
   }
+  // a new round: the scoreboard starts again from nothing
+  { const w = !!winner(); if (wasWon && !w) stats.clear(); wasWon = w; }
   // round end: the host decides, everyone else follows the score it sends
   if (isHost()) {
     if (!roundEndAt && winner()) roundEndAt = t + 8;
@@ -798,7 +800,7 @@ function applyLiveSetup() {
     if (f.size !== applied.size) { teamSize = THREE.MathUtils.clamp(+f.size || 1, 1, MAX_PER_TEAM); changes.push(`${teamSize} per side`); }
     if (f.mode !== applied.mode) { setMode(f.mode); changes.push(f.mode === 'front' ? 'Zeppelin Front' : 'Dogfight'); }
     if (restart) {                                                           // a fresh round: scores and objectives reset, everybody respawns
-      score.it = score.ah = 0; roundEndAt = 0; if (mode === 'front') front.reset();
+      stats.clear(); score.it = score.ah = 0; roundEndAt = 0; if (mode === 'front') front.reset();
       for (const p of planes.values()) if (p.local) { p.alive = false; p.dying = false; p.respawnAt = now() + 0.8; }
       nextBotCheck = 0;
     }
