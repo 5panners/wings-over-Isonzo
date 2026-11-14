@@ -242,3 +242,5 @@ On the Controls tab, **Keyboard and mouse** lists every flight control with a ke
 The airship heavy guns use a recorded heavy machine gun (`assets/airship-gun.mp3`), slightly varied in pitch for each shot and duller with distance. It has its own **Airship heavy guns** volume slider and test button on the Audio tab; the shells bursting are a separate **Shell bursts** slider.
 
 Aircraft machine guns use a recorded round (`assets/gun.mp3`), played for every shot with a little pitch variation and cut short so a long burst stays crisp; other aircraft's guns are duller and quieter with distance. The **Guns** slider on the Audio tab sets the volume.
+
+An airship hitting the ground plays a recorded explosion (`assets/airship-explode.mp3`): heard a moment later the further away it is, quieter and duller with distance but still big from far off. It uses the **Explosions** slider, and the Test button there plays it after the ordinary crash.

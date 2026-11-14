@@ -185,7 +185,7 @@ export function createFront(scene, fx) {
   function crash(s, now) {
     s.crashed = true; s.mesh.visible = false; s.wreck = { pos: s.pos.clone(), until: now + 30 };
     s.wreck.pos.y = H(s.pos.x, s.pos.z) + 2;
-    for (let i = 0; i < 5; i++) fx.explode(local(s, (Math.random() - 0.5) * 8, 0, (i / 4 - 0.5) * L * 0.85, new THREE.Vector3()));
+    for (let i = 0; i < 5; i++) fx.explode(local(s, (Math.random() - 0.5) * 8, 0, (i / 4 - 0.5) * L * 0.85, new THREE.Vector3()), true);     // the blasts along the hull are silent: the recording is the sound
     fx.crashBlast?.(s.wreck.pos);
   }
 

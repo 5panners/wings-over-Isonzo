@@ -12,7 +12,7 @@ import { createTrails } from './trails.js';
 import { createPickup, ROCKETS_PER_PACK } from './pickup.js';
 import { createFront, POINT, CELLS, CELL_HP, SIDE_NAME, NATION, TEAM_TINT, SHIP_LEN } from './front.js';
 import { connect } from './net.js';
-import { startSound, updateSound, updateOthers, toggleMute, setMuted, isMuted, CHANNELS, getVolume, setVolume, resetVolumes, previewSound, rocketSound, pickupSound, setRain, setGusts, thunderSound, gunSound, cannonSound, crumpSound, captureJingle, lostJingle, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
+import { startSound, updateSound, updateOthers, toggleMute, setMuted, isMuted, CHANNELS, getVolume, setVolume, resetVolumes, previewSound, rocketSound, pickupSound, setRain, setGusts, thunderSound, gunSound, cannonSound, crumpSound, captureJingle, lostJingle, boomSound, airshipBoomSound, hitTakenSound, hitScoredSound } from './sound.js';
 import { pollGamepad, updateControls, initControls, toggleControls, controlsOpen } from './gamepad.js';
 
 const MAX_PER_TEAM = 6, RESPAWN = 5, SEND_HZ = 15;
@@ -38,7 +38,7 @@ const weather = createWeather(scene, { sky, camera, clouds, fx: { light: (p, pea
 const pickup = createPickup(scene);          // the one rocket pickup, see pickup.js
 buildObjects(scene).setMode({ map: false, rings: false, flights: [], lineup: false });
 const trails = createTrails(scene, camera);          // coloured vapour from the wingtips of aircraft in a fast dive
-const railway = createRailway(scene, { puff: (p, c, sz, life, rise, spread) => puff(p, c, sz, life, rise, spread), explode: p => explode(p), send: m => net?.send(m) });          // the line, its viaducts and the trains
+const railway = createRailway(scene, { puff: (p, c, sz, life, rise, spread) => puff(p, c, sz, life, rise, spread), explode: (p, quiet) => explode(p, quiet), send: m => net?.send(m) });          // the line, its viaducts and the trains
 { const s = sun.shadow.camera; s.near = 100; s.far = 4500; }   // its width is set every frame by sky.update
 const hud = $('hud'), ctx = hud.getContext('2d');
 function resize() {
@@ -81,8 +81,8 @@ function puff(pos, color, size, life, rise = 2, spread = 0) {
 // a white flash across the whole screen for a big explosion near the camera (strength falls off with distance)
 let flashLevel = 0; const flashEl = document.getElementById('flash');
 function screenFlash(pos, power) { const d = camera.position.distanceTo(pos), lvl = power / (1 + (d / 260) * (d / 260)); if (lvl > 0.04) flashLevel = Math.max(flashLevel, Math.min(0.9, lvl)); }
-function explode(pos) {
-  boomSound(pos.distanceTo(camera.position));
+function explode(pos, quiet = false) {
+  if (!quiet) boomSound(pos.distanceTo(camera.position));
   for (let i = 0; i < 12; i++) puff(pos, ['#fff2b0', '#ffc24a', '#ff8a2a'][i % 3], 3 + Math.random() * 5, 0.45 + Math.random() * 0.6, 4, 7).glow = true;   // fireball
   for (let i = 0; i < 20; i++) puff(pos, i % 4 ? '#2d2a28' : '#55504a', 2.5 + Math.random() * 4, 1.8 + Math.random() * 2.8, 3 + Math.random() * 3, 11);       // smoke
   for (let i = 0; i < 8; i++) puff(pos, '#3a2a1c', 0.5 + Math.random() * 0.5, 0.9 + Math.random() * 0.8, -14 - Math.random() * 10, 16);                         // falling debris
@@ -92,7 +92,7 @@ function explode(pos) {
 // An airship hitting the ground: a huge rolling fireball, a column of black smoke, hundreds of sparks thrown up and out, and a light show
 // (a blinding first flash, then three more bursts of light a moment apart).
 function crashBlast(pos) {
-  boomSound(pos.distanceTo(camera.position)); crumpSound(Math.max(0, pos.distanceTo(camera.position) * 0.4));
+  airshipBoomSound(pos.distanceTo(camera.position));
   const c = V2.copy(pos);
   for (let i = 0; i < 28; i++) puff(c, ['#fff2b0', '#ffc24a', '#ff8a2a', '#ff5a1c'][i % 4], 7 + Math.random() * 12, 0.7 + Math.random() * 1.1, 6 + Math.random() * 10, 26).glow = true;          // fireball
   for (let i = 0; i < 26; i++) puff(c, i % 3 ? '#2d2a28' : '#55504a', 6 + Math.random() * 9, 3 + Math.random() * 4, 7 + Math.random() * 9, 28);                                               // smoke column

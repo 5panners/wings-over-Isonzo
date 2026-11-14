@@ -62,6 +62,8 @@ export function startSound() {
   }).catch(() => { /* no engine sound if the file cannot be loaded */ });
   // thunder: three recorded claps (assets/thunder1-3.mp3), one picked at random for each flash
   for (const n of [1, 2, 3]) fetch(new URL(`../assets/thunder${n}.mp3`, import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => thunderBufs.push(buf)).catch(() => {});
+  // an airship going up when it hits the ground (assets/airship-explode.mp3)
+  fetch(new URL('../assets/airship-explode.mp3', import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => { airBoomBuf = buf; }).catch(() => {});
   // the aircraft machine guns: one recorded round (assets/gun.mp3), played for every shot
   fetch(new URL('../assets/gun.mp3', import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => { gunBuf = buf; }).catch(() => {});
   // the airship cannons: a recorded heavy machine gun (assets/airship-gun.mp3)
@@ -258,6 +260,15 @@ export function pickupSound() {
   if (!ctx) return; tone(bus.rockets, 0.5, 'sine', 880, 880, 0.35); tone(bus.rockets, 0.5, 'triangle', 880, 880, 0.12);
   tone(bus.rockets, 0.7, 'sine', 1320, 1320, 0.32, 0.14); tone(bus.rockets, 0.7, 'triangle', 1320, 1320, 0.1, 0.14);
 }
+let airBoomBuf = null;
+// The airship destroyed: the recording, heard a moment later the further away it is, quieter and duller with distance but still a big sound from far off.
+export function airshipBoomSound(dist) {
+  if (!ctx) return;
+  if (!airBoomBuf) { boomSound(dist); return; }
+  const src = ctx.createBufferSource(), lp = ctx.createBiquadFilter(), g = ctx.createGain(), v = Math.max(0.25, 1 / (1 + (dist / 700) * (dist / 700)));
+  src.buffer = airBoomBuf; lp.type = 'lowpass'; lp.frequency.value = Math.max(700, 16000 - dist * 12); g.gain.value = 1.5 * v;
+  src.connect(lp); lp.connect(g); g.connect(bus.booms); src.start(ctx.currentTime + Math.min(1.5, dist / 800));
+}
 export function boomSound(dist) {
   if (!ctx) return; const v = Math.max(0.12, near(dist * 0.4));
   burst(bus.booms, 1.4, 'lowpass', 900, 50, 0.9 * v); tone(bus.booms, 0.5, 'sine', 90, 30, 0.5 * v);
@@ -278,7 +289,7 @@ export function previewSound(key) {
   else if (key === 'thunder') { thunderSound(150, 0); later(() => thunderSound(900, 0.3), 3800); }
   else if (key === 'rockets') { pickupSound(); later(() => rocketSound(0), 900); later(() => rocketSound(60), 1500); }
   else if (key === 'hits') { hitTakenSound(); later(hitScoredSound, 350); later(hitTakenSound, 700); }
-  else if (key === 'booms') boomSound(120);
+  else if (key === 'booms') { boomSound(120); later(() => airshipBoomSound(150), 1600); }
   else if (key === 'master') { for (let i = 0; i < 4; i++) later(() => gunSound(0, true), i * 90); later(() => cannonSound(40), 450); later(() => boomSound(120), 1100); }
   else if (key === 'wind') {
     const src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), g = ctx.createGain();
