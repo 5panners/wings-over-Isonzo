@@ -216,4 +216,4 @@ One line crosses the Salcano bridge. East of it the line springs across the vall
 Press **F9** to detach the camera. The mouse looks around (the pointer is captured), the arrow keys fly it (up/down forward and back, left/right sideways), **R / F** or **PageUp / PageDown** rise and fall, **Shift** is fast, **Ctrl** is slow, and the mouse wheel changes the speed. Your aircraft is held in place and cannot be hurt while it is on; everything else carries on. Press **F9** again to return.
 
 ## Vapour trails
-An aircraft diving faster than 200 km/h trails coloured vapour from both wingtips (blue for Italy, red for Austria-Hungary), which widens and fades over a couple of seconds. It applies to every aircraft, bots and other players included.
+An aircraft diving faster than 200 km/h trails coloured vapour from both wingtips (blue for Italy, red for Austria-Hungary), which tapers to a point and fades over a couple of seconds. It applies to every aircraft, bots and other players included.
