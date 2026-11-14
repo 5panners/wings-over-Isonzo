@@ -295,14 +295,14 @@ const KB_LAYOUTS = {
   classic: { mouseFly: false, bind: { pitchUp: ['KeyS', 'ArrowDown'], pitchDown: ['KeyW', 'ArrowUp'], rollLeft: ['KeyA', 'ArrowLeft'], rollRight: ['KeyD', 'ArrowRight'], yawLeft: ['KeyQ'], yawRight: ['KeyE'], throttleUp: ['ShiftLeft', 'ShiftRight'], throttleDown: ['ControlLeft', 'KeyC'], fire: ['Space', 'Mouse0'], rocket: ['KeyR'] } },
 };
 const KB_RESERVED = new Set(['Escape', 'F9', 'Tab', 'KeyM', 'BracketLeft', 'BracketRight', 'Comma', 'Period', 'F5', 'F11', 'F12']);        // used by the game itself
-const kb = { mouseFly: true, bind: JSON.parse(JSON.stringify(KB_LAYOUTS.bf.bind)), sens: 1, centre: 0.5, x: 0, y: 0, locked: false, at: performance.now(), capture: null };
+const kb = { mouseFly: true, bind: JSON.parse(JSON.stringify(KB_LAYOUTS.bf.bind)), sens: 1, centre: 0.5, rud: 1, yawRamp: 0, x: 0, y: 0, locked: false, at: performance.now(), capture: null };
 try {
   const v = JSON.parse(localStorage.getItem('woi-kb') || '{}');
   if (v.bind) { for (const [a] of KB_ACTIONS) if (Array.isArray(v.bind[a])) kb.bind[a] = [v.bind[a][0] || null, v.bind[a][1] || null]; if (typeof v.mouseFly === 'boolean') kb.mouseFly = v.mouseFly; }
   else if (v.scheme === 'classic') { kb.bind = JSON.parse(JSON.stringify(KB_LAYOUTS.classic.bind)); kb.mouseFly = false; }       // from the earlier two-scheme setting
-  if (v.sens >= 0.2 && v.sens <= 3) kb.sens = v.sens; if (v.centre >= 0 && v.centre <= 2) kb.centre = v.centre;
+  if (v.rud >= 0.2 && v.rud <= 2) kb.rud = v.rud; if (v.sens >= 0.2 && v.sens <= 3) kb.sens = v.sens; if (v.centre >= 0 && v.centre <= 2) kb.centre = v.centre;
 } catch { /* no storage */ }
-const saveKb = () => { try { localStorage.setItem('woi-kb', JSON.stringify({ mouseFly: kb.mouseFly, bind: kb.bind, sens: kb.sens, centre: kb.centre })); } catch { /* no storage */ } };
+const saveKb = () => { try { localStorage.setItem('woi-kb', JSON.stringify({ mouseFly: kb.mouseFly, bind: kb.bind, sens: kb.sens, centre: kb.centre, rud: kb.rud })); } catch { /* no storage */ } };
 const KEY_NAMES = { Space: 'Space', ShiftLeft: 'Left Shift', ShiftRight: 'Right Shift', ControlLeft: 'Left Ctrl', ControlRight: 'Right Ctrl', AltLeft: 'Left Alt', AltRight: 'Right Alt', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
   Mouse0: 'Left click', Mouse1: 'Middle click', Mouse2: 'Right click', Mouse3: 'Mouse 4', Mouse4: 'Mouse 5', Backquote: '`', Minus: '-', Equal: '=', Semicolon: ';', Quote: "'", Slash: '/', Backslash: '\\', Enter: 'Enter', Backspace: 'Backspace', CapsLock: 'Caps Lock' };
 const keyName = c => KEY_NAMES[c] || (/^Key[A-Z]$/.test(c) ? c.slice(3) : /^Digit\d$/.test(c) ? c.slice(5) : /^Numpad/.test(c) ? 'Num ' + c.slice(6) : c);
@@ -324,7 +324,7 @@ function renderKb() {
 }
 function applyKb() {
   $('help').textContent = helpText(); $('mousefly').checked = kb.mouseFly;
-  $('msens').value = Math.round(kb.sens * 100); $('msens-out').textContent = Math.round(kb.sens * 100) + '%'; $('mcentre').value = Math.round(kb.centre * 100); $('mcentre-out').textContent = kb.centre ? Math.round(kb.centre * 100) + '%' : 'off (holds)';
+  $('msens').value = Math.round(kb.sens * 100); $('msens-out').textContent = Math.round(kb.sens * 100) + '%'; $('mcentre').value = Math.round(kb.centre * 100); $('rud').value = Math.round(kb.rud * 100); $('rud-out').textContent = Math.round(kb.rud * 100) + '%'; $('mcentre-out').textContent = kb.centre ? Math.round(kb.centre * 100) + '%' : 'off (holds)';
   if (!kb.mouseFly) { kb.x = kb.y = 0; exitLock(); }
   renderKb();
 }
@@ -345,6 +345,7 @@ $('kb-table').addEventListener('click', e => {
 $('tab-controls').addEventListener('click', e => { const t = e.target.closest('[data-layout]'); if (!t) return; const L = KB_LAYOUTS[t.dataset.layout]; kb.bind = JSON.parse(JSON.stringify(L.bind)); kb.mouseFly = L.mouseFly; kb.capture = null; kb.msg = `${t.textContent} layout loaded.`; saveKb(); applyKb(); });
 $('mousefly').addEventListener('change', e => { kb.mouseFly = e.target.checked; saveKb(); applyKb(); });
 $('msens').addEventListener('input', e => { kb.sens = e.target.value / 100; saveKb(); applyKb(); });
+$('rud').addEventListener('input', e => { kb.rud = e.target.value / 100; saveKb(); applyKb(); });
 $('mcentre').addEventListener('input', e => { kb.centre = e.target.value / 100; saveKb(); applyKb(); });
 // Esc releases a captured mouse and some browsers then swallow the key press, so when the lock is lost that way, open the options ourselves
 function exitLock() { kb.selfExit = performance.now(); document.exitPointerLock?.(); }
@@ -363,11 +364,12 @@ function readInput() {                                        // keyboard, mouse
   const g = pollGamepad(), nowMs = performance.now(), dt = Math.min(0.1, (nowMs - kb.at) / 1000); kb.at = nowMs;
   if (god.on) return { pitch: 0, roll: 0, yaw: 0, throttle: 0, throttleAbs: undefined, fire: 0, rocket: 0 };
   if (kb.mouseFly && kb.centre > 0) { const d = Math.exp(-kb.centre * dt); kb.x *= d; kb.y *= d; }          // the virtual stick drifts back to centre
+  { const want = anyDown('yawRight') - anyDown('yawLeft'), rate = (want ? 4 : 8) * Math.max(0.5, kb.rud) * dt; kb.yawRamp += Math.max(-rate, Math.min(rate, want - kb.yawRamp)); }
   const mx = kb.mouseFly ? kb.x : 0, my = kb.mouseFly ? kb.y : 0;
   return {
     pitch: clamp1(anyDown('pitchUp') - anyDown('pitchDown') + my + g.pitch) * (flight.invert ? -1 : 1),       // pulling back raises the nose (reversed if inverted)
     roll: clamp1(anyDown('rollRight') - anyDown('rollLeft') + mx + g.roll),
-    yaw: clamp1(anyDown('yawRight') - anyDown('yawLeft') + g.yaw),
+    yaw: clamp1(kb.yawRamp * kb.rud + g.yaw),                                                     // the rudder keys ease in, scaled by the rudder key sensitivity
     throttle: clamp1(anyDown('throttleUp') - anyDown('throttleDown') + g.throttle),
     throttleAbs: g.throttleAbs,
     fire: anyDown('fire') || g.fire,
