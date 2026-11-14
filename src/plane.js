@@ -214,7 +214,8 @@ function crashed(p) {
 
 // ---------- player flight options (Options > Flight) ----------
 // All 1 = the standard model. They apply to the player's own aircraft only; bots always fly the standard one.
-export const FLIGHT_DEFAULT = { invert: false, level: 0, pitch: 1, roll: 1, rudder: 1, stall: 1, top: 1, bleed: 1, tough: 1, turb: 1 };
+export const FLIGHT_DEFAULT = { invert: false, level: 0.5, pitch: 0.6, roll: 1, rudder: 1, stall: 0.6, top: 1.05, bleed: 0.35, tough: 1, turb: 0.9 };     // the pilot's defaults
+const BOT_FLIGHT = { invert: false, level: 0, pitch: 1, roll: 1, rudder: 1, stall: 1, top: 1, bleed: 1, tough: 1, turb: 1 };                                  // bots always fly the unmodified model
 export const flight = { ...FLIGHT_DEFAULT };
 try { const s = JSON.parse(localStorage.getItem('woi-flight') || '{}'); for (const k in flight) if (typeof s[k] === typeof flight[k] && (typeof s[k] !== 'number' || Number.isFinite(s[k]))) flight[k] = s[k]; } catch { /* no storage */ }
 export function setFlight(patch) {
@@ -228,7 +229,7 @@ export function setFlight(patch) {
 // reaches lift-off speed, otherwise the aircraft rolls on at a steady speed and refuses to leave the ground.
 const GROUND_THRUST = 0.42;
 function groundRoll(p, pitch, steer, input, dt) {
-  const fo = input ? flight : FLIGHT_DEFAULT, t = TYPES[p.type], top = t.top * fo.top, takeoff = t.stall * fo.stall * 1.05 * (1 + 0.3 * wingDamage(p));      // lift-off speed: a little over the stall speed
+  const fo = input ? flight : BOT_FLIGHT, t = TYPES[p.type], top = t.top * fo.top, takeoff = t.stall * fo.stall * 1.05 * (1 + 0.3 * wingDamage(p));      // lift-off speed: a little over the stall speed
   if (input) p.throttle = input.throttleAbs != null ? input.throttleAbs : THREE.MathUtils.clamp(p.throttle + input.throttle * 0.7 * dt, 0, 1);
   p.heading -= steer * 0.9 * dt * THREE.MathUtils.clamp(p.speed / 8, 0.15, 1);
   // the tail comes up as speed builds; holding the stick back keeps the skid dragging on the grass

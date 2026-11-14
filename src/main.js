@@ -842,9 +842,9 @@ const FLIGHT_ROWS = [
   { key: 'tough', label: 'Aircraft toughness', min: 50, max: 300, hint: 'How much punishment your aircraft takes before systems fail and it goes down', fmt: v => v + '%' },
 ];
 const FLIGHT_PRESETS = {
-  forgiving: { turb: 0.5, level: 0.5, stall: 0.85, bleed: 0.6, tough: 1.5, top: 1, pitch: 1, roll: 1, rudder: 1 },
+  forgiving: { ...FLIGHT_DEFAULT, invert: flight.invert, turb: 0.5, level: 0.6, stall: 0.5, bleed: 0.2, tough: 1.5 },
   standard: { ...FLIGHT_DEFAULT, invert: flight.invert },
-  demanding: { turb: 1.3, level: 0, stall: 1.1, bleed: 1.4, tough: 0.8, top: 1, pitch: 1, roll: 1, rudder: 1 },
+  demanding: { ...FLIGHT_DEFAULT, invert: flight.invert, turb: 1.3, level: 0, stall: 1, bleed: 1, tough: 0.8, pitch: 1, top: 1 },
 };
 $('flt-rows').innerHTML = FLIGHT_ROWS.map(r => `<div class="aud-row flt"><span>${r.label}</span><input type="range" min="${r.min}" max="${r.max}" step="5" data-flt="${r.key}" aria-label="${r.label}"><output data-fout="${r.key}"></output></div><p class="aud-hint">${r.hint}</p>`).join('');
 function showFlight() {
