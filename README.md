@@ -229,3 +229,6 @@ Hold **Tab** for the scoreboard: every pilot, bots included, ranked by kills, th
 
 ## Thunder
 Thunder uses three recorded claps (`assets/thunder1.mp3` to `thunder3.mp3`). One is picked at random for each lightning strike (never the same one twice running), pitched a little differently each time, and made quieter and duller the further away the strike is. The clap follows the flash closely: almost at once for a near strike, within about a second for a distant one. The old synthesised thunder remains only as a fallback while the recordings load.
+
+## Win conditions
+The Game tab has **Kills to win** (Dogfight: 10, 20, 30, 50, 75 or 100) and **Tickets per side** (Zeppelin Front: 50, 100, 150, 200, 300 or 500). The host chooses them and everyone follows. Losing an airship costs a third of the starting tickets, so it stays proportionate. Changing the kill target applies at once; changing the tickets restarts a Zeppelin Front round.

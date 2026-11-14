@@ -15,7 +15,7 @@ import { connect } from './net.js';
 import { startSound, updateSound, updateOthers, toggleMute, setMuted, isMuted, CHANNELS, getVolume, setVolume, resetVolumes, previewSound, rocketSound, pickupSound, setRain, setGusts, thunderSound, gunSound, cannonSound, crumpSound, captureJingle, lostJingle, boomSound, hitTakenSound, hitScoredSound } from './sound.js';
 import { pollGamepad, updateControls, initControls, toggleControls, controlsOpen } from './gamepad.js';
 
-const MAX_PER_TEAM = 6, SCORE_LIMIT = 30, RESPAWN = 5, SEND_HZ = 15;
+const MAX_PER_TEAM = 6, RESPAWN = 5, SEND_HZ = 15;
 const BOT_NAMES = { it: ['Ten. Rossi', 'Serg. Bianchi', 'Cap. Moretti', 'Ten. Ferrari', 'Serg. Conti', 'Ten. Galli'], ah: ['Lt. Huber', 'Fw. Novak', 'Hptm. Steiner', 'Lt. Horvath', 'Zgf. Bauer', 'Oblt. Kovacs'] };
 const $ = id => document.getElementById(id);
 const other = t => (t === 'it' ? 'ah' : 'it');
@@ -132,6 +132,7 @@ const planes = new Map();
 const score = { it: 0, ah: 0 };
 let heard = null;          // the latest settings message from a battle in progress, heard while joining
 let onRunway = true;       // start (and restart) on the runway instead of in the air; the host's choice also applies to its bots
+let scoreLimit = 30;                                       // kills that win a Dogfight (adjustable)
 let me = null, net = null, teamSize = 4, roundEndAt = 0, nextSend = 0, nextBotCheck = 0, running = false, oobSince = 0;
 const feed = [];
 // The host runs the bots, the clock and the objectives. It is the flying player with the lowest id: a player still on
@@ -202,7 +203,7 @@ function packState() {
   const e = [];
   for (const p of planes.values()) if (p.local) e.push([p.id, p.name, p.team, p.type, +p.pos.x.toFixed(1), +p.pos.y.toFixed(1), +p.pos.z.toFixed(1), +p.quat.x.toFixed(3), +p.quat.y.toFixed(3), +p.quat.z.toFixed(3), +p.quat.w.toFixed(3), +p.speed.toFixed(1), Math.round(p.hp), (p.alive ? 1 : 0) | (p.firing ? 2 : 0) | (p.isBot ? 4 : 0) | (p.dying ? 8 : 0) | (p.fire ? 16 : 0) | (p.dmg.eng > 0.3 ? 32 : 0), p.rockets | 0]);
   const m = { t: 's', e };
-  if (isHost()) { m.sc = [score.it, score.ah]; m.n = teamSize; m.d = [+sky.tod.toFixed(3), sky.rate]; m.b = botSettings.level; m.md = mode; m.wx = [weather.index, weather.auto ? 1 : 0]; m.pk = pickup.pack(); if (mode === 'front') m.f = front.pack(); }
+  if (isHost()) { m.sc = [score.it, score.ah]; m.n = teamSize; m.d = [+sky.tod.toFixed(3), sky.rate]; m.b = botSettings.level; m.md = mode; m.kl = scoreLimit; m.st = front.startTickets; m.wx = [weather.index, weather.auto ? 1 : 0]; m.pk = pickup.pack(); if (mode === 'front') m.f = front.pack(); }
   return m;
 }
 function onMessage(m, from) {
@@ -228,6 +229,7 @@ function onMessage(m, from) {
       if ((m.md === 'front' || m.md === 'dogfight') && m.md !== mode) setMode(m.md);    // the host's mode is everyone's mode
       if (m.f && mode === 'front') front.unpack(m.f, t);
       if (m.pk !== undefined) pickup.unpack(m.pk);                                // the one pickup is the host's
+      if (m.kl) scoreLimit = m.kl | 0; if (m.st) front.setStartTickets(m.st);         // the host's win conditions are everyone's
       if (m.wx) weather.follow(m.wx[0]);                                         // the host's weather is everyone's weather
       if (m.d) { sky.rate = +m.d[1] || 0; const off = Math.abs(sky.tod - m.d[0]); if (Math.min(off, 24 - off) > 0.03) sky.tod = +m.d[0] || 0; }   // the host's clock is everyone's clock
     }
@@ -508,7 +510,7 @@ function shellBurst(pos, struck) {
 // the side that has won the round, or null
 function winner() {
   if (mode === 'front') return front.tickets.it <= 0 ? 'ah' : front.tickets.ah <= 0 ? 'it' : null;
-  return Math.max(score.it, score.ah) >= SCORE_LIMIT ? (score.it > score.ah ? 'it' : 'ah') : null;
+  return Math.max(score.it, score.ah) >= scoreLimit ? (score.it > score.ah ? 'it' : 'ah') : null;
 }
 
 function updateEffects(dt) {
@@ -690,7 +692,7 @@ function drawHud(t) {
     const lead = pt.v > 0 ? 'it' : 'ah', pct = Math.round(Math.abs(pt.v) * 100);
     const gor = pt.contested ? 'contested' : pt.owner ? (pct < 100 ? `${NATION[pt.owner]} ${pct}%` : NATION[pt.owner]) : pct ? `${NATION[lead]} capturing ${pct}%` : 'neutral';
     $('front').innerHTML = `${ship('it')}<span>${POINT.name}: <b style="color:${TEAM_TINT[pt.owner || (pct ? lead : 'none')]}">${gor}</b></span>${ship('ah')}`;
-  } else $('score').innerHTML = `<span style="color:${TEAM_COLOR.it}">Italy ${score.it}</span><small>first to ${SCORE_LIMIT} · ${it} v ${ah}</small><span style="color:${TEAM_COLOR.ah}">${score.ah} Austria-Hungary</span>`;
+  } else $('score').innerHTML = `<span style="color:${TEAM_COLOR.it}">Italy ${score.it}</span><small>first to ${scoreLimit} · ${it} v ${ah}</small><span style="color:${TEAM_COLOR.ah}">${score.ah} Austria-Hungary</span>`;
   const bar = (v, good) => { const c = good ? (v > 0.5 ? '#9fd08a' : v > 0.2 ? '#f0c05a' : '#ff7a5c') : (v < 0.3 ? '#9fd08a' : v < 0.75 ? '#f0c05a' : '#ff7a5c'); return `<i class="bar"><i style="width:${Math.round(Math.max(0, Math.min(1, good ? v : 1 - v)) * 100)}%;background:${c}"></i></i>`; };
   $('stats').innerHTML = `<b>${TYPES[me.type].name}</b>${me.rockets ? '<br>Rockets ' + '▮'.repeat(me.rockets) + '<span style="opacity:.35">' + '▮'.repeat(ROCKETS_PER_PACK - me.rockets) + '</span>' : ''}<br>Speed ${Math.round(me.speed * 3.6)} km/h<br>Altitude ${Math.round(me.pos.y * 10)} m<br>Throttle ${Math.round(me.throttle * 100)}%`
     + `<table><tr><td>Airframe</td><td>${bar(me.hp / TYPES[me.type].hp, true)}</td></tr><tr><td>Fuel</td><td>${bar(me.fuel, true)}</td></tr>`
@@ -722,13 +724,13 @@ function drawHud(t) {
 
 // ---------------- lobby ----------------
 const params = new URLSearchParams(location.search);
-for (const [id, key] of [['name', 'name'], ['pw', 'pw'], ['team', 'team'], ['size', 'size'], ['relay', 'relay'], ['time', 'time'], ['clock', 'clock'], ['bots', 'bots'], ['startpos', 'start'], ['mode', 'mode'], ['weather', 'weather']]) if (params.get(key)) $(id).value = params.get(key);
+for (const [id, key] of [['name', 'name'], ['pw', 'pw'], ['team', 'team'], ['size', 'size'], ['relay', 'relay'], ['time', 'time'], ['clock', 'clock'], ['bots', 'bots'], ['startpos', 'start'], ['mode', 'mode'], ['weather', 'weather'], ['kills', 'kills'], ['tickets', 'tickets']]) if (params.get(key)) $(id).value = params.get(key);
 if (!$('name').value) $('name').value = localStorage.getItem('woi-name') || 'Pilot ' + Math.floor(100 + Math.random() * 900);
 
 async function start() {
   startSound();
   const name = $('name').value.trim().slice(0, 20) || 'Pilot', password = $('pw').value, relay = $('relay').value.trim();
-  teamSize = THREE.MathUtils.clamp(+$('size').value || 4, 1, MAX_PER_TEAM);
+  teamSize = THREE.MathUtils.clamp(+$('size').value || 4, 1, MAX_PER_TEAM); scoreLimit = +$('kills').value || 30; front.setStartTickets(+$('tickets').value || 150);
   onRunway = $('startpos').value === 'runway';
   weather.set($('weather').value, true);
   setMode($('mode').value);                                                    // switched to the host's mode if joining a battle
@@ -742,7 +744,7 @@ async function start() {
       await new Promise(r => setTimeout(r, relay ? 900 : 3500));   // hear who is already flying before picking a side
       // joining a battle in progress: take on its settings and state, so that if host duties pass to us it carries on unchanged
       if (heard) {
-        setMode(heard.md); if (heard.n) teamSize = THREE.MathUtils.clamp(heard.n | 0, 1, MAX_PER_TEAM);
+        if (heard.kl) scoreLimit = heard.kl | 0; if (heard.st) front.setStartTickets(heard.st); setMode(heard.md); if (heard.n) teamSize = THREE.MathUtils.clamp(heard.n | 0, 1, MAX_PER_TEAM);
         if (heard.b != null) botSettings.level = THREE.MathUtils.clamp(heard.b | 0, -1, BOT_LEVELS.length - 1);
         if (heard.d) { sky.tod = +heard.d[0] || 0; sky.rate = +heard.d[1] || 0; }
         if (heard.sc) { score.it = heard.sc[0] | 0; score.ah = heard.sc[1] | 0; }
@@ -768,13 +770,13 @@ $('camease').addEventListener('input', e => setCamEase(e.target.value / 100));
 // Callsign, password, side and relay belong to the connection, so they are locked. In a shared battle only the host
 // can change the battle itself (mode, bots, pilots per side, time, clock); everybody can change where they start from.
 let applied = {};
-const HOST_FIELDS = ['mode', 'size', 'bots', 'time', 'clock', 'weather'], LOCKED_FIELDS = ['name', 'pw', 'team', 'relay'];
-function currentSetup() { return { mode, size: String(teamSize), bots: String(botSettings.level), startpos: onRunway ? 'runway' : 'air', time: String(Math.round(sky.tod * 100) / 100), clock: String(sky.rate), weather: weather.auto ? 'auto' : String(weather.index) }; }
+const HOST_FIELDS = ['mode', 'size', 'bots', 'time', 'clock', 'weather', 'kills', 'tickets'], LOCKED_FIELDS = ['name', 'pw', 'team', 'relay'];
+function currentSetup() { return { mode, size: String(teamSize), bots: String(botSettings.level), startpos: onRunway ? 'runway' : 'air', time: String(Math.round(sky.tod * 100) / 100), clock: String(sky.rate), kills: String(scoreLimit), tickets: String(front.startTickets), weather: weather.auto ? 'auto' : String(weather.index) }; }
 function showLiveSetup() {                                                 // fill the form from what is actually happening now
   if (!running) return;
   const cur = currentSetup(); applied = { ...cur };
   const pick = (id, v) => { const el = $(id), want = String(v); if ([...el.options].some(o => o.value === want)) el.value = want; };
-  pick('mode', cur.mode); pick('size', cur.size); pick('bots', cur.bots); pick('startpos', cur.startpos); pick('clock', cur.clock); pick('weather', cur.weather);
+  pick('mode', cur.mode); pick('size', cur.size); pick('bots', cur.bots); pick('startpos', cur.startpos); pick('clock', cur.clock); pick('weather', cur.weather); pick('kills', cur.kills); pick('tickets', cur.tickets);
   const near = [...$('time').options].map(o => +o.value).sort((a, b) => Math.abs(a - sky.tod) - Math.abs(b - sky.tod))[0];
   $('time').dataset.shown = near; pick('time', near);                      // the menu only has a few hours; "applied" remembers it so an untouched menu changes nothing
   applied.time = String(near);
@@ -789,10 +791,12 @@ function enterLiveSetup() {
   showLiveSetup();
 }
 function applyLiveSetup() {
-  const f = { mode: $('mode').value, size: $('size').value, bots: $('bots').value, startpos: $('startpos').value, time: $('time').value, clock: $('clock').value, weather: $('weather').value }, host = isHost(), changes = [];
+  const f = { mode: $('mode').value, size: $('size').value, bots: $('bots').value, startpos: $('startpos').value, time: $('time').value, clock: $('clock').value, weather: $('weather').value, kills: $('kills').value, tickets: $('tickets').value }, host = isHost(), changes = [];
   if (f.startpos !== applied.startpos) { onRunway = f.startpos === 'runway'; changes.push(onRunway ? 'you start on the runway' : 'you start in the air'); }
   if (host) {
-    const restart = f.mode !== applied.mode || f.size !== applied.size;
+    const restart = f.mode !== applied.mode || f.size !== applied.size || (f.mode === 'front' && f.tickets !== applied.tickets);
+    if (f.kills !== applied.kills) { scoreLimit = +f.kills || 30; changes.push(`Dogfight is first to ${scoreLimit} kills`); }
+    if (f.tickets !== applied.tickets) { front.setStartTickets(+f.tickets); changes.push(`${front.startTickets} tickets each in Zeppelin Front`); }
     if (f.bots !== applied.bots) { botSettings.level = THREE.MathUtils.clamp(+f.bots | 0, -1, BOT_LEVELS.length - 1); changes.push('bots: ' + $('bots').selectedOptions[0].textContent.split(' — ')[0].toLowerCase()); }
     if (f.time !== applied.time) { sky.tod = +f.time; changes.push('time ' + sky.clock()); }
     if (f.clock !== applied.clock) { sky.rate = +f.clock; changes.push('clock ' + $('clock').selectedOptions[0].textContent.toLowerCase()); }

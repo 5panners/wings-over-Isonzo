@@ -9,7 +9,9 @@ import { GUN } from './plane.js';
 import { makeFlagMesh, registerArm } from './flags.js';
 import { buildGunMount } from './guns.js';
 
-export const TICKETS = 150, AIRSHIP_TICKETS = 50, BLEED_EVERY = 4;
+export const TICKETS = 150, BLEED_EVERY = 4;
+let startTickets = TICKETS;                                   // tickets each side begins with (adjustable); losing an airship costs a third of them
+const airshipLoss = () => Math.max(1, Math.round(startTickets / 3));
 export const SHIP_LEN = 160, SHIP_R = 11, CELLS = 6, CELL_HP = 320;
 const L = SHIP_LEN, R = SHIP_R, LOST_CELLS = 3, SPEED = 6, SPREAD = 4;
 // Each gun mount and each gondola has a hit box of its own, apart from the gas cells: a mount can be shot away, and a gondola (with the engine and the
@@ -95,7 +97,7 @@ function buildPoint(scene) {
 // fx: { puff, explode, shoot(origin, dir, side, real), say(html), label(id) } supplied by the game
 export function createFront(scene, fx) {
   let active = false, bleed = 0;
-  const tickets = { it: TICKETS, ah: TICKETS };
+  const tickets = { it: startTickets, ah: startTickets };
   const point = { v: 0, owner: null, contested: false, count: { it: 0, ah: 0 }, ...buildPoint(scene) };
   const ships = {};
   for (const side of SIDES) {
@@ -132,7 +134,7 @@ export function createFront(scene, fx) {
   function reset() {
     for (const side of SIDES) resetShip(ships[side]);
     point.v = 0; point.owner = null; point.contested = false; prevOwner.v = null; bleed = 0;
-    tickets.it = tickets.ah = TICKETS;
+    tickets.it = tickets.ah = startTickets;
   }
   function setActive(on) { active = !!on; for (const side of SIDES) ships[side].mesh.visible = active && !ships[side].crashed; point.group.visible = active; if (active) reset(); }
 
@@ -143,7 +145,7 @@ export function createFront(scene, fx) {
   }
   function goDown(s) {
     if (s.down) return; s.down = true; s.fall = 0; s.heading = Math.atan2(s.fwd.x, s.fwd.z); s.downBy = s.lastHitBy;
-    tickets[s.side] -= AIRSHIP_TICKETS;
+    tickets[s.side] -= airshipLoss();
   }
   // a gun mount is shot away (here and, via pack/unpack, everywhere else)
   let myTeamNow = null;
@@ -261,7 +263,7 @@ export function createFront(scene, fx) {
   function observe(now, myTeam) {
     for (const side of SIDES) {
       const s = ships[side], hp = s.cells.reduce((a, b) => a + b, 0);
-      if (s.down && !s.seen.down) fx.say(side === myTeam ? `Our airship is going down! <b>−${AIRSHIP_TICKETS} tickets</b>` : `${s.downBy ? fx.label(s.downBy) + ' brought down' : 'Down goes'} the ${SIDE_NAME[side]} airship! <b>−${AIRSHIP_TICKETS} enemy tickets</b>`);
+      if (s.down && !s.seen.down) fx.say(side === myTeam ? `Our airship is going down! <b>−${airshipLoss()} tickets</b>` : `${s.downBy ? fx.label(s.downBy) + ' brought down' : 'Down goes'} the ${SIDE_NAME[side]} airship! <b>−${airshipLoss()} enemy tickets</b>`);
       if (side === myTeam && !s.down && hp < s.seen.hp - 0.5 && now - s.seen.alarm > 20) { s.seen.alarm = now; fx.say('Our airship is under attack!'); }
       s.seen.down = s.down; s.seen.hp = hp;
     }
@@ -425,5 +427,5 @@ export function createFront(scene, fx) {
     if (Array.isArray(m.tk)) { tickets.it = m.tk[0] | 0; tickets.ah = m.tk[1] | 0; }
   }
 
-  return { ships, point, tickets, get active() { return active; }, setActive, reset, update, damage, hitTest, collide, avoid, objectiveFor, pack, unpack };
+  return { ships, point, tickets, get startTickets() { return startTickets; }, setStartTickets(n) { startTickets = Math.max(10, Math.min(2000, n | 0 || TICKETS)); }, get active() { return active; }, setActive, reset, update, damage, hitTest, collide, avoid, objectiveFor, pack, unpack };
 }

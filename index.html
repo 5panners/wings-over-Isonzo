@@ -107,7 +107,7 @@
 <canvas id="c"></canvas>
 <canvas id="hud"></canvas>
 <div id="fps" aria-label="Frames per second">-- FPS</div>
-<div id="build" aria-label="Build number">Build 80</div>
+<div id="build" aria-label="Build number">Build 81</div>
 <div id="ui">
   <div id="score" class="panel"></div>
   <div id="stats" class="panel"></div>
@@ -135,7 +135,13 @@
     <label for="name">Callsign</label>
     <input id="name" maxlength="20" required>
     <label for="mode">Mode</label>
-    <select id="mode"><option value="front" selected>Zeppelin Front — airships, Gradisca and tickets</option><option value="dogfight">Dogfight — first side to 30 kills</option></select>
+    <select id="mode"><option value="front" selected>Zeppelin Front — airships, Gradisca and tickets</option><option value="dogfight">Dogfight — first side to the kill target</option></select>
+    <div class="row">
+      <div><label for="kills">Kills to win <small>(Dogfight)</small></label>
+        <select id="kills"><option>10</option><option>20</option><option selected>30</option><option>50</option><option>75</option><option>100</option></select></div>
+      <div><label for="tickets">Tickets per side <small>(Zeppelin Front)</small></label>
+        <select id="tickets"><option>50</option><option>100</option><option selected>150</option><option>200</option><option>300</option><option>500</option></select></div>
+    </div>
     <label for="pw">Squadron password <small>— share it with your friends</small></label>
     <input id="pw" maxlength="64" placeholder="empty = solo flight">
     <div class="row">
