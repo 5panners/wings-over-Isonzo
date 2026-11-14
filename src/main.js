@@ -151,8 +151,15 @@ const isGunners = id => typeof id === 'string' && id.startsWith('air-');
 const nameOf = id => (isGunners(id) ? `${SIDE_NAME[id.slice(4)] || ''} airship gunners` : planes.get(id)?.name.replace(/[<&]/g, ''));
 const label = id => { const p = planes.get(id), team = p ? p.team : isGunners(id) ? id.slice(4) : null; return team && nameOf(id) ? `<b style="color:${TEAM_COLOR[team]}">${nameOf(id)}</b>` : 'someone'; };
 
+// ---- the scoreboard: kills and deaths per pilot (bots included), counted from the kill messages every player receives ----
+const stats = new Map(); let boardAt = -9;
+function rec(id) {
+  const p = planes.get(id); let r = stats.get(id); if (!r) stats.set(id, r = { name: p?.name || nameOf(id) || id, team: p?.team || null, kills: 0, deaths: 0 });
+  if (p) { r.name = p.name; r.team = p.team; } return r;
+}
 function onKill(victimId, killerId, collidedWith) {
   const v = planes.get(victimId); if (!v) return;
+  rec(victimId).deaths++; if (killerId && !collidedWith && !isGunners(killerId) && killerId !== victimId) rec(killerId).kills++;
   say(collidedWith === 'balloon' ? `${label(victimId)} flew into a balloon` : collidedWith === 'airship' ? `${label(victimId)} flew into an airship` : collidedWith ? `${label(victimId)} collided with ${label(collidedWith)}` : killerId && nameOf(killerId) ? `${label(killerId)} shot down ${label(victimId)}` : `${label(victimId)} crashed`);
   if (isHost() && !roundEndAt) { if (mode === 'front') front.tickets[v.team]--; else score[other(v.team)]++; }      // Front: every aircraft lost costs its side a ticket
 }
@@ -262,7 +269,7 @@ addEventListener('mousemove', e => { if (god.on && document.pointerLockElement) 
 addEventListener('wheel', e => { if (god.on) god.speed = THREE.MathUtils.clamp(god.speed * (e.deltaY < 0 ? 1.25 : 0.8), 5, 3000); }, { passive: true });
 addEventListener('keydown', e => { if (e.code === 'F9' && running) { e.preventDefault(); setGod(!god.on); return; } if (e.code === 'Escape' && running) { toggleControls(); if (controlsOpen()) showLiveSetup(); return; } if (controlsOpen()) return; startSound(); if (running && (e.code === 'Comma' || e.code === 'Period')) { setCamEase(camEase + (e.code === 'Period' ? 0.1 : -0.1)); say(`Camera smoothing ${Math.round(camEase * 100)}%`); } if (e.code === 'KeyM' && running) { say(toggleMute() ? 'Sound off' : 'Sound on'); $('aud-mute').checked = isMuted(); }
   if (running && (e.code === 'BracketLeft' || e.code === 'BracketRight')) { if (isHost()) { sky.tod = (sky.tod + (e.code === 'BracketRight' ? 1 : 23)) % 24; say('Time set to ' + sky.clock()); } else say('Only the host can change the time'); }
-  keys.add(e.code); if (running && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); });
+  keys.add(e.code); if (running && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) e.preventDefault(); });
 addEventListener('keyup', e => keys.delete(e.code));
 addEventListener('blur', () => { keys.clear(); mouseFire = false; });
 $('c').addEventListener('mousedown', () => { startSound(); mouseFire = true; }); addEventListener('mouseup', () => mouseFire = false);
@@ -681,6 +688,15 @@ function drawHud(t) {
     + `<table><tr><td>Airframe</td><td>${bar(me.hp / TYPES[me.type].hp, true)}</td></tr><tr><td>Fuel</td><td>${bar(me.fuel, true)}</td></tr>`
     + Object.keys(ZONE_TEXT).map(z => `<tr><td>${ZONE_TEXT[z][0]}</td><td>${bar(me.dmg[z], false)}</td></tr>`).join('') + '</table>'
     + (me.fire ? '<b style="color:#ff7a5c">ON FIRE</b>' : '');
+  { const show = keys.has('Tab') || !!winner();                                    // hold Tab, or it appears when a round is won
+    const bd = $('board'); bd.style.display = show ? 'block' : 'none';
+    if (show && t - boardAt > 0.25) { boardAt = t;
+      const rows = new Map(); for (const p of planes.values()) rows.set(p.id, rec(p.id)); for (const [id, r] of stats) if (!rows.has(id)) rows.set(id, r);
+      const list = [...rows.entries()].sort((x, y) => y[1].kills - x[1].kills || x[1].deaths - y[1].deaths || x[1].name.localeCompare(y[1].name));
+      const head = mode === 'front' ? `<span style="color:${TEAM_COLOR.it}">Italy ${Math.max(0, front.tickets.it)}</span> · <span style="color:${TEAM_COLOR.ah}">${Math.max(0, front.tickets.ah)} Austria-Hungary</span>` : `<span style="color:${TEAM_COLOR.it}">Italy ${score.it}</span> · <span style="color:${TEAM_COLOR.ah}">${score.ah} Austria-Hungary</span>`;
+      bd.innerHTML = `<h3>${head}</h3><table><tr><th>#</th><th>Pilot</th><th>Kills</th><th>Deaths</th><th>K/D</th></tr>`
+        + list.map(([id, r], i) => `<tr class="${me && id === me.id ? 'me' : ''}"><td>${i + 1}</td><td><i class="tm" style="background:${TEAM_COLOR[r.team] || '#999'}"></i>${String(r.name).replace(/[<&]/g, '')}</td><td>${r.kills}</td><td>${r.deaths}</td><td>${r.deaths ? (r.kills / r.deaths).toFixed(1) : r.kills ? r.kills + '.0' : '–'}</td></tr>`).join('') + `</table><small>Hold Tab for the scoreboard</small>`;
+    } }
   $('feed').innerHTML = feed.filter(f => t - f.at < 9).map(f => `<div>${f.text}</div>`).join('');
   const won = winner();
   $('msg').innerHTML = won ? `${NATION[won]} wins the ${mode === 'front' ? 'battle' : 'round'}<small>next round starting…</small>`

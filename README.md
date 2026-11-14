@@ -223,3 +223,6 @@ The train can be destroyed: any round that strikes it does damage (240 points; t
 
 ## Airship guns and gondolas
 Each airship's four gun mounts and two engine gondolas have hit boxes of their own, separate from the gas cells. A mount has 60 points (a rocket or three shells destroys it), a gondola 200. A destroyed mount stops firing and smoulders. Destroying a gondola also takes out the gun slung under it and slows the airship by 40% (it loses an engine). None of this brings the airship down on its own; that still takes burning three gas cells.
+
+## Scoreboard
+Hold **Tab** for the scoreboard: every pilot, bots included, ranked by kills, then fewest deaths, with kills, deaths and kill/death ratio, the team score or tickets at the top and your own line highlighted. It also appears on its own when a round is won. Kills and deaths are counted from the kill messages every player receives, so everyone sees the same table.

@@ -13,6 +13,15 @@
   #score { top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 18px; align-items: baseline; font-weight: 700; font-size: 19px; white-space: nowrap; }
   #score small { font-weight: 400; font-size: 12px; opacity: .8; }
   #stats { left: 18px; bottom: 18px; min-width: 170px; }
+  #board { display: none; left: 50%; top: 96px; transform: translateX(-50%); width: min(560px, 92vw); padding: 14px 18px; max-height: calc(100vh - 240px); overflow: hidden; }
+  #board h3 { margin: 0 0 8px; font-size: 15px; text-align: center; letter-spacing: .04em; }
+  #board table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  #board th { text-align: right; font-weight: 600; opacity: .6; padding: 2px 6px; font-size: 12px; }
+  #board th:nth-child(2), #board td:nth-child(2) { text-align: left; }
+  #board td { text-align: right; padding: 3px 6px; border-top: 1px solid rgba(255,255,255,.08); }
+  #board tr.me td { background: rgba(255,255,255,.1); font-weight: 600; }
+  #board .tm { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; }
+  #board small { display: block; text-align: center; opacity: .55; margin-top: 8px; font-size: 11.5px; }
   #stats table { border-collapse: collapse; margin-top: 4px; font-size: 13px; } #stats td { padding: 1px 8px 1px 0; }
   .bar { display: inline-block; width: 70px; height: 8px; background: rgba(255, 255, 255, .18); border-radius: 2px; overflow: hidden; vertical-align: middle; } .bar i { display: block; height: 100%; }
   /* bump the number in #build with every change pushed */
@@ -97,15 +106,16 @@
 <canvas id="c"></canvas>
 <canvas id="hud"></canvas>
 <div id="fps" aria-label="Frames per second">-- FPS</div>
-<div id="build" aria-label="Build number">Build 74</div>
+<div id="build" aria-label="Build number">Build 75</div>
 <div id="ui">
   <div id="score" class="panel"></div>
   <div id="stats" class="panel"></div>
   <div id="feed"></div>
+  <div id="board" class="panel"></div>
   <div id="front" class="panel"></div>
   <div id="msg"></div>
   <div id="netinfo"></div>
-  <div id="help">W/S or ↑/↓ pitch · A/D or ←/→ roll · Q/E rudder · Shift / Ctrl throttle · Space or mouse to fire · R rockets · M sound · [ ] time of day · Esc options</div>
+  <div id="help">W/S or ↑/↓ pitch · A/D or ←/→ roll · Q/E rudder · Shift / Ctrl throttle · Space or mouse to fire · R rockets · M sound · [ ] time of day · Tab scoreboard · Esc options</div>
 </div>
 <div id="controls" role="dialog" aria-label="Options"><div>
   <h2 id="opt-title">Wings over Isonzo</h2>
