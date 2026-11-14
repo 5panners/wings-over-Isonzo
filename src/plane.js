@@ -42,7 +42,7 @@ export function overOwnField(team, x, z) {
   return Math.abs(along) < 130 && across > -24 && across < 48;
 }     // two aircraft closer than this have hit each other
 
-export const GUN = { speed: 230, life: 1.5, interval: 0.09, damage: 3, hitRadius: 3.2 };
+export const GUN = { speed: 230, life: 1.5, interval: 0.09, damage: 5, hitRadius: 3.2 };
 const CEILING = 480, G = 9.81, KD = 0.0055;   // drag coefficient; thrust is sized so level top speed = TYPES[..].top
 const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1), ZERO = new THREE.Vector3();
 const q1 = new THREE.Quaternion(), q2 = new THREE.Quaternion(), v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3(), m1 = new THREE.Matrix4();
