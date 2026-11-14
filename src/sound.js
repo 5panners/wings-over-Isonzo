@@ -166,10 +166,11 @@ let gunBuf = null;
 export function gunSound(dist, own) {
   if (!ctx) return; const v = own ? 1 : near(dist); if (v < 0.03) return;
   if (gunBuf) {                                                          // the recorded round, cut short so a long burst does not pile up, varied a little, duller at a distance
-    const src = ctx.createBufferSource(), lp = ctx.createBiquadFilter(), g = ctx.createGain(), t = ctx.currentTime;
-    src.buffer = gunBuf; src.playbackRate.value = 0.92 + Math.random() * 0.16; lp.type = 'lowpass'; lp.frequency.value = own ? 18000 : Math.max(1800, 16000 - dist * 18);
-    g.gain.setValueAtTime(0.75 * v, t); g.gain.setTargetAtTime(0, t + 0.16, 0.07);
-    src.connect(lp); lp.connect(g); g.connect(bus.guns); src.start(t); src.stop(t + 0.5); return;
+    const src = ctx.createBufferSource(), sh = ctx.createBiquadFilter(), lp = ctx.createBiquadFilter(), g = ctx.createGain(), t = ctx.currentTime;
+    src.buffer = gunBuf; src.playbackRate.value = 0.82 + Math.random() * 0.14;                       // a little slower and lower, so it has more body and less edge
+    sh.type = 'highshelf'; sh.frequency.value = 2200; sh.gain.value = -11; lp.type = 'lowpass'; lp.frequency.value = own ? 6500 : Math.max(1400, 5500 - dist * 8);
+    g.gain.setValueAtTime(0.95 * v, t); g.gain.setTargetAtTime(0, t + 0.16, 0.07);
+    src.connect(sh); sh.connect(lp); lp.connect(g); g.connect(bus.guns); src.start(t); src.stop(t + 0.5); return;
   }
   burst(bus.guns, 0.07, 'bandpass', own ? 1500 : 1100, 500, 0.3 * v);
   tone(bus.guns, 0.06, 'square', own ? 150 : 120, 60, 0.14 * v);
