@@ -261,84 +261,117 @@ function manageBots() {
 }
 
 // ---------------- input ----------------
-const keys = new Set(); let mouseFire = false;
+const keys = new Set();
 // Developer god camera (F9): the view detaches from the aircraft and flies free. Mouse looks round (the pointer is captured),
 // arrow keys move (up/down forward and back, left/right sideways), PageUp / PageDown or R / F rise and fall, Shift is fast, Ctrl is slow,
 // the wheel changes the speed. Your aircraft is held where it is and cannot be hurt; everything else carries on.
 const god = { on: false, yaw: 0, pitch: 0, speed: 120, pos: new THREE.Vector3() };
 function setGod(on) {
   god.on = on; if (on) { god.pos.copy(camera.position); const e = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ'); god.yaw = e.y; god.pitch = e.x; $('c').requestPointerLock?.(); say('God camera: mouse looks, arrows move, PgUp/PgDn up and down, Shift fast, wheel speed, F9 to leave'); }
-  else { document.exitPointerLock?.(); say('God camera off'); if (me) { camera.position.copy(me.pos); camLook.copy(me.pos); } }
+  else { exitLock(); say('God camera off'); if (me) { camera.position.copy(me.pos); camLook.copy(me.pos); } }
 }
 addEventListener('mousemove', e => { if (god.on && document.pointerLockElement) { god.yaw -= e.movementX * 0.0022; god.pitch = THREE.MathUtils.clamp(god.pitch - e.movementY * 0.0022, -1.55, 1.55); } });
 addEventListener('wheel', e => { if (god.on) god.speed = THREE.MathUtils.clamp(god.speed * (e.deltaY < 0 ? 1.25 : 0.8), 5, 3000); }, { passive: true });
-addEventListener('keydown', e => { if (e.code === 'F9' && running) { e.preventDefault(); setGod(!god.on); return; } if (e.code === 'Escape' && running) { toggleControls(); if (controlsOpen()) showLiveSetup(); return; } if (controlsOpen()) return; startSound(); if (running && (e.code === 'Comma' || e.code === 'Period')) { setCamEase(camEase + (e.code === 'Period' ? 0.1 : -0.1)); say(`Camera smoothing ${Math.round(camEase * 100)}%`); } if (e.code === 'KeyM' && running) { say(toggleMute() ? 'Sound off' : 'Sound on'); $('aud-mute').checked = isMuted(); }
+addEventListener('keydown', e => { if (e.code === 'F9' && running) { e.preventDefault(); setGod(!god.on); return; } if (e.code === 'Escape' && running) { if (performance.now() - (kb.lockLostAt || 0) < 300) return; toggleControls(); if (controlsOpen()) showLiveSetup(); return; } if (controlsOpen()) return; startSound(); if (running && (e.code === 'Comma' || e.code === 'Period')) { setCamEase(camEase + (e.code === 'Period' ? 0.1 : -0.1)); say(`Camera smoothing ${Math.round(camEase * 100)}%`); } if (e.code === 'KeyM' && running) { say(toggleMute() ? 'Sound off' : 'Sound on'); $('aud-mute').checked = isMuted(); }
   if (running && (e.code === 'BracketLeft' || e.code === 'BracketRight')) { if (isHost()) { sky.tod = (sky.tod + (e.code === 'BracketRight' ? 1 : 23)) % 24; say('Time set to ' + sky.clock()); } else say('Only the host can change the time'); }
   keys.add(e.code); if (running && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) e.preventDefault(); });
 addEventListener('keyup', e => keys.delete(e.code));
-addEventListener('blur', () => { keys.clear(); mouseFire = false; mouseRocket = false; });
-let mouseRocket = false;
+addEventListener('blur', () => { keys.clear(); });
 $('c').addEventListener('mousedown', e => {
   startSound();
-  if (kb.scheme === 'bf' && running && !controlsOpen() && !god.on && !document.pointerLockElement) { $('c').requestPointerLock?.(); return; }      // the first click only captures the mouse
-  if (e.button === 2 && kb.scheme === 'bf') mouseRocket = true; else mouseFire = true;
+  if (kb.mouseFly && running && !controlsOpen() && !god.on && !document.pointerLockElement) { $('c').requestPointerLock?.(); return; }      // the first click only captures the mouse
+  keys.add('Mouse' + e.button);                                           // mouse buttons are keys like any other, so they can be assigned
 });
-addEventListener('mouseup', e => { if (e.button === 2) mouseRocket = false; else mouseFire = false; });
-// ---- keyboard and mouse schemes ----
-// 'bf' (Battlefield): the mouse moves a virtual stick (pitch and roll) that drifts back to centre; W / S throttle up and down; A / D rudder; Q / E roll;
-// left click fires the guns, right click a rocket. 'classic': W S pitch, A D roll, Q E rudder, Shift / Ctrl throttle.
-const kb = { scheme: 'bf', sens: 1, centre: 0.5, x: 0, y: 0, locked: false, at: performance.now() };
-try { const v = JSON.parse(localStorage.getItem('woi-kb') || '{}'); if (v.scheme === 'bf' || v.scheme === 'classic') kb.scheme = v.scheme; if (v.sens >= 0.2 && v.sens <= 3) kb.sens = v.sens; if (v.centre >= 0 && v.centre <= 2) kb.centre = v.centre; } catch { /* no storage */ }
-const saveKb = () => { try { localStorage.setItem('woi-kb', JSON.stringify({ scheme: kb.scheme, sens: kb.sens, centre: kb.centre })); } catch { /* no storage */ } };
-const KEY_TEXT = {
-  bf: 'Pitch and roll <b>mouse</b> · Throttle <b>W</b> / <b>S</b> · Rudder <b>A</b> / <b>D</b> · Roll <b>Q</b> / <b>E</b> · Fire <b>left click</b> or <b>Space</b> · Rocket <b>right click</b> or <b>R</b> · Sound <b>M</b> · Time of day <b>[ ]</b> · Scoreboard <b>Tab</b> · Options <b>Esc</b>',
-  classic: 'Pitch <b>W S</b> or <b>↑ ↓</b> · Roll <b>A D</b> or <b>← →</b> · Rudder <b>Q E</b> · Throttle <b>Shift</b> / <b>Ctrl</b> · Fire <b>Space</b> or mouse · Rockets <b>R</b> · Sound <b>M</b> · Time of day <b>[ ]</b> · Scoreboard <b>Tab</b> · Options <b>Esc</b>',
+addEventListener('mouseup', e => keys.delete('Mouse' + e.button));
+// ---- keyboard and mouse: every control is an assignable key or mouse button, and the mouse can also fly the aircraft ----
+// Two layouts to start from. Battlefield: the mouse moves a virtual stick (pitch and roll) that drifts back to centre, W / S throttle, A / D rudder,
+// Q / E roll, left click guns, right click rockets. Classic: W S pitch, A D roll, Q E rudder, Shift / Ctrl throttle.
+const KB_ACTIONS = [
+  ['pitchUp', 'Pitch up (nose up)'], ['pitchDown', 'Pitch down (nose down)'], ['rollLeft', 'Roll left'], ['rollRight', 'Roll right'], ['yawLeft', 'Rudder left'], ['yawRight', 'Rudder right'],
+  ['throttleUp', 'Throttle up'], ['throttleDown', 'Throttle down'], ['fire', 'Fire guns'], ['rocket', 'Fire rocket'],
+];
+const KB_LAYOUTS = {
+  bf: { mouseFly: true, bind: { pitchUp: ['ArrowDown'], pitchDown: ['ArrowUp'], rollLeft: ['KeyQ', 'ArrowLeft'], rollRight: ['KeyE', 'ArrowRight'], yawLeft: ['KeyA'], yawRight: ['KeyD'], throttleUp: ['KeyW', 'ShiftLeft'], throttleDown: ['KeyS', 'ControlLeft'], fire: ['Mouse0', 'Space'], rocket: ['Mouse2', 'KeyR'] } },
+  classic: { mouseFly: false, bind: { pitchUp: ['KeyS', 'ArrowDown'], pitchDown: ['KeyW', 'ArrowUp'], rollLeft: ['KeyA', 'ArrowLeft'], rollRight: ['KeyD', 'ArrowRight'], yawLeft: ['KeyQ'], yawRight: ['KeyE'], throttleUp: ['ShiftLeft', 'ShiftRight'], throttleDown: ['ControlLeft', 'KeyC'], fire: ['Space', 'Mouse0'], rocket: ['KeyR'] } },
 };
-const HELP_TEXT = {
-  bf: 'Mouse pitch and roll · W/S throttle · A/D rudder · Q/E roll · Click to fire · Right click rocket · M sound · [ ] time of day · Tab scoreboard · Esc options',
-  classic: 'W/S or ↑/↓ pitch · A/D or ←/→ roll · Q/E rudder · Shift / Ctrl throttle · Space or mouse to fire · R rockets · M sound · [ ] time of day · Tab scoreboard · Esc options',
-};
-const THROTTLE_KEY = () => kb.scheme === 'bf' ? 'W' : 'Shift';
-function applyKb() {
-  $('keytext').innerHTML = KEY_TEXT[kb.scheme]; $('help').textContent = HELP_TEXT[kb.scheme]; $('kbscheme').value = kb.scheme;
-  $('msens').value = Math.round(kb.sens * 100); $('msens-out').textContent = Math.round(kb.sens * 100) + '%'; $('mcentre').value = Math.round(kb.centre * 100); $('mcentre-out').textContent = kb.centre ? Math.round(kb.centre * 100) + '%' : 'off (holds)';
-  if (kb.scheme !== 'bf') { kb.x = kb.y = 0; document.exitPointerLock?.(); }
+const KB_RESERVED = new Set(['Escape', 'F9', 'Tab', 'KeyM', 'BracketLeft', 'BracketRight', 'Comma', 'Period', 'F5', 'F11', 'F12']);        // used by the game itself
+const kb = { mouseFly: true, bind: JSON.parse(JSON.stringify(KB_LAYOUTS.bf.bind)), sens: 1, centre: 0.5, x: 0, y: 0, locked: false, at: performance.now(), capture: null };
+try {
+  const v = JSON.parse(localStorage.getItem('woi-kb') || '{}');
+  if (v.bind) { for (const [a] of KB_ACTIONS) if (Array.isArray(v.bind[a])) kb.bind[a] = [v.bind[a][0] || null, v.bind[a][1] || null]; if (typeof v.mouseFly === 'boolean') kb.mouseFly = v.mouseFly; }
+  else if (v.scheme === 'classic') { kb.bind = JSON.parse(JSON.stringify(KB_LAYOUTS.classic.bind)); kb.mouseFly = false; }       // from the earlier two-scheme setting
+  if (v.sens >= 0.2 && v.sens <= 3) kb.sens = v.sens; if (v.centre >= 0 && v.centre <= 2) kb.centre = v.centre;
+} catch { /* no storage */ }
+const saveKb = () => { try { localStorage.setItem('woi-kb', JSON.stringify({ mouseFly: kb.mouseFly, bind: kb.bind, sens: kb.sens, centre: kb.centre })); } catch { /* no storage */ } };
+const KEY_NAMES = { Space: 'Space', ShiftLeft: 'Left Shift', ShiftRight: 'Right Shift', ControlLeft: 'Left Ctrl', ControlRight: 'Right Ctrl', AltLeft: 'Left Alt', AltRight: 'Right Alt', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
+  Mouse0: 'Left click', Mouse1: 'Middle click', Mouse2: 'Right click', Mouse3: 'Mouse 4', Mouse4: 'Mouse 5', Backquote: '`', Minus: '-', Equal: '=', Semicolon: ';', Quote: "'", Slash: '/', Backslash: '\\', Enter: 'Enter', Backspace: 'Backspace', CapsLock: 'Caps Lock' };
+const keyName = c => KEY_NAMES[c] || (/^Key[A-Z]$/.test(c) ? c.slice(3) : /^Digit\d$/.test(c) ? c.slice(5) : /^Numpad/.test(c) ? 'Num ' + c.slice(6) : c);
+const bound = a => kb.bind[a].filter(Boolean);
+const anyDown = a => bound(a).some(c => keys.has(c)) ? 1 : 0;
+const firstKey = a => bound(a).length ? keyName(bound(a)[0]) : '–';
+const THROTTLE_KEY = () => firstKey('throttleUp');
+function helpText() {
+  const n = firstKey, pitch = kb.mouseFly ? 'Mouse pitch and roll' : `${n('pitchDown')}/${n('pitchUp')} pitch · ${n('rollLeft')}/${n('rollRight')} roll`;
+  return `${pitch} · ${n('throttleDown')}/${n('throttleUp')} throttle · ${n('yawLeft')}/${n('yawRight')} rudder${kb.mouseFly ? ` · ${n('rollLeft')}/${n('rollRight')} roll` : ''} · ${n('fire')} fire · ${n('rocket')} rocket · M sound · [ ] time of day · Tab scoreboard · Esc options`;
 }
-$('kbscheme').addEventListener('change', e => { kb.scheme = e.target.value; saveKb(); applyKb(); });
+function renderKb() {
+  const note = kb.capture ? `Press the key or mouse button for “${KB_ACTIONS.find(a => a[0] === kb.capture.action)[1]}”… (Esc cancels)` : kb.msg || '';
+  $('kb-table').innerHTML = '<tr><th></th><th>Key or button</th><th>Alternate</th></tr>' + KB_ACTIONS.map(([a, label]) => `<tr><th>${label}</th>` + [0, 1].map(slot => {
+    const code = kb.bind[a][slot], cap = kb.capture && kb.capture.action === a && kb.capture.slot === slot;
+    return `<td class="${cap ? 'cap' : ''}"><button type="button" data-kbassign="${a}:${slot}">${cap ? 'press a key…' : code ? keyName(code) : 'not assigned'}</button>${code && !cap ? `<button type="button" class="x" data-kbclear="${a}:${slot}" aria-label="Clear">×</button>` : ''}</td>`;
+  }).join('') + '</tr>').join('');
+  $('kb-note').textContent = note;
+}
+function applyKb() {
+  $('help').textContent = helpText(); $('mousefly').checked = kb.mouseFly;
+  $('msens').value = Math.round(kb.sens * 100); $('msens-out').textContent = Math.round(kb.sens * 100) + '%'; $('mcentre').value = Math.round(kb.centre * 100); $('mcentre-out').textContent = kb.centre ? Math.round(kb.centre * 100) + '%' : 'off (holds)';
+  if (!kb.mouseFly) { kb.x = kb.y = 0; exitLock(); }
+  renderKb();
+}
+function assignKey(code) {
+  const { action, slot } = kb.capture; kb.capture = null;
+  if (code === 'Escape') { kb.msg = ''; return applyKb(); }
+  if (KB_RESERVED.has(code)) { kb.msg = `${keyName(code)} is used by the game (sound, time of day, scoreboard, options): pick another.`; return applyKb(); }
+  let taken = null; for (const [a, l] of KB_ACTIONS) kb.bind[a].forEach((c, i) => { if (c === code && !(a === action && i === slot)) { kb.bind[a][i] = null; taken = l; } });     // a key does one thing: take it from whatever had it
+  kb.bind[action][slot] = code; kb.msg = taken ? `${keyName(code)} was “${taken}”; it is now unassigned.` : ''; saveKb(); applyKb();
+}
+addEventListener('keydown', e => { if (!kb.capture) return; e.preventDefault(); e.stopImmediatePropagation(); if (!e.repeat) assignKey(e.code); }, true);
+addEventListener('mousedown', e => { if (!kb.capture || e.target.closest?.('[data-kbassign], [data-kbclear]')) return; e.preventDefault(); e.stopImmediatePropagation(); assignKey('Mouse' + e.button); }, true);
+$('kb-table').addEventListener('click', e => {
+  const t = e.target.closest('button'); if (!t) return;
+  if (t.dataset.kbassign) { const [action, slot] = t.dataset.kbassign.split(':'); kb.capture = kb.capture && kb.capture.action === action && kb.capture.slot === +slot ? null : { action, slot: +slot }; kb.msg = ''; renderKb(); }
+  else if (t.dataset.kbclear) { const [action, slot] = t.dataset.kbclear.split(':'); kb.bind[action][+slot] = null; kb.msg = ''; saveKb(); applyKb(); }
+});
+$('tab-controls').addEventListener('click', e => { const t = e.target.closest('[data-layout]'); if (!t) return; const L = KB_LAYOUTS[t.dataset.layout]; kb.bind = JSON.parse(JSON.stringify(L.bind)); kb.mouseFly = L.mouseFly; kb.capture = null; kb.msg = `${t.textContent} layout loaded.`; saveKb(); applyKb(); });
+$('mousefly').addEventListener('change', e => { kb.mouseFly = e.target.checked; saveKb(); applyKb(); });
 $('msens').addEventListener('input', e => { kb.sens = e.target.value / 100; saveKb(); applyKb(); });
 $('mcentre').addEventListener('input', e => { kb.centre = e.target.value / 100; saveKb(); applyKb(); });
-document.addEventListener('pointerlockchange', () => { kb.locked = document.pointerLockElement === $('c'); });
+// Esc releases a captured mouse and some browsers then swallow the key press, so when the lock is lost that way, open the options ourselves
+function exitLock() { kb.selfExit = performance.now(); document.exitPointerLock?.(); }
+document.addEventListener('pointerlockchange', () => {
+  const was = kb.locked; kb.locked = document.pointerLockElement === $('c');
+  if (was && !kb.locked && running && kb.mouseFly && !god.on && !controlsOpen() && performance.now() - (kb.selfExit || 0) > 400) { kb.lockLostAt = performance.now(); toggleControls(true); showLiveSetup(); }
+});
 addEventListener('mousemove', e => {                                                   // the mouse moves the virtual stick while it is captured
-  if (kb.scheme !== 'bf' || !kb.locked || god.on || !running || controlsOpen()) return;
+  if (!kb.mouseFly || !kb.locked || god.on || !running || controlsOpen()) return;
   kb.x = Math.max(-1, Math.min(1, kb.x + e.movementX * 0.0045 * kb.sens)); kb.y = Math.max(-1, Math.min(1, kb.y + e.movementY * 0.0045 * kb.sens));
 });
-addEventListener('contextmenu', e => { if (running && kb.scheme === 'bf') e.preventDefault(); });
+addEventListener('contextmenu', e => { if (running) e.preventDefault(); });
 const k = (...c) => c.some(x => keys.has(x)) ? 1 : 0;
 const clamp1 = v => Math.max(-1, Math.min(1, v));
 function readInput() {                                        // keyboard, mouse and controller add together
   const g = pollGamepad(), nowMs = performance.now(), dt = Math.min(0.1, (nowMs - kb.at) / 1000); kb.at = nowMs;
   if (god.on) return { pitch: 0, roll: 0, yaw: 0, throttle: 0, throttleAbs: undefined, fire: 0, rocket: 0 };
-  const inv = flight.invert ? -1 : 1;
-  if (kb.scheme === 'bf') {
-    if (kb.centre > 0) { const d = Math.exp(-kb.centre * dt); kb.x *= d; kb.y *= d; }              // the virtual stick drifts back to centre
-    return {
-      pitch: clamp1(kb.y + k('ArrowDown') - k('ArrowUp') + g.pitch) * inv,                       // mouse back / down arrow / stick back pulls the nose up
-      roll: clamp1(kb.x + k('KeyE', 'ArrowRight') - k('KeyQ', 'ArrowLeft') + g.roll),
-      yaw: clamp1(k('KeyD') - k('KeyA') + g.yaw),
-      throttle: clamp1(k('KeyW', 'ShiftLeft', 'ShiftRight') - k('KeyS', 'ControlLeft', 'KeyC') + g.throttle),
-      throttleAbs: g.throttleAbs,
-      fire: k('Space') || mouseFire || g.fire,
-      rocket: k('KeyR') || mouseRocket || g.rocket,
-    };
-  }
+  if (kb.mouseFly && kb.centre > 0) { const d = Math.exp(-kb.centre * dt); kb.x *= d; kb.y *= d; }          // the virtual stick drifts back to centre
+  const mx = kb.mouseFly ? kb.x : 0, my = kb.mouseFly ? kb.y : 0;
   return {
-    pitch: clamp1(k('KeyS', 'ArrowDown') - k('KeyW', 'ArrowUp') + g.pitch) * inv,               // S / down arrow / stick back pulls the nose up (reversed if inverted)
-    roll: clamp1(k('KeyD', 'ArrowRight') - k('KeyA', 'ArrowLeft') + g.roll),
-    yaw: clamp1(k('KeyE') - k('KeyQ') + g.yaw),
-    throttle: clamp1(k('ShiftLeft', 'ShiftRight') - k('ControlLeft', 'KeyC') + g.throttle),
+    pitch: clamp1(anyDown('pitchUp') - anyDown('pitchDown') + my + g.pitch) * (flight.invert ? -1 : 1),       // pulling back raises the nose (reversed if inverted)
+    roll: clamp1(anyDown('rollRight') - anyDown('rollLeft') + mx + g.roll),
+    yaw: clamp1(anyDown('yawRight') - anyDown('yawLeft') + g.yaw),
+    throttle: clamp1(anyDown('throttleUp') - anyDown('throttleDown') + g.throttle),
     throttleAbs: g.throttleAbs,
-    fire: k('Space') || mouseFire || g.fire,
-    rocket: k('KeyR') || g.rocket,
+    fire: anyDown('fire') || g.fire,
+    rocket: anyDown('rocket') || g.rocket,
   };
 }
 
@@ -701,7 +734,7 @@ function drawHud(t) {
     ctx.fillStyle = f > 0.5 ? '#9fd08a' : f > 0.2 ? '#f0c05a' : '#ff6a4c'; ctx.fillRect(x, y, w * f, h);
     ctx.restore();
   }
-  if (kb.scheme === 'bf' && me.alive && !me.dying && !god.on) {              // the virtual stick: a ring with a dot where the mouse is holding it, or a reminder to capture the mouse
+  if (kb.mouseFly && me.alive && !me.dying && !god.on) {              // the virtual stick: a ring with a dot where the mouse is holding it, or a reminder to capture the mouse
     if (kb.locked) { const cx = W / 2, cy = Hh / 2 + 0; ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(cx, cy, 86, 0, 6.3); ctx.stroke(); ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.beginPath(); ctx.arc(cx + kb.x * 86, cy + kb.y * 86, 4.5, 0, 6.3); ctx.fill(); }
     else if (!controlsOpen()) { ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.shadowColor = '#000'; ctx.shadowBlur = 4; ctx.textAlign = 'center'; ctx.fillText('Click the game to capture the mouse for flying', W / 2, Hh - 70); ctx.shadowBlur = 0; }
   }

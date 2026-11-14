@@ -63,6 +63,10 @@
   #controls h3 { font: 700 12px Inter, system-ui, sans-serif; letter-spacing: .16em; text-transform: uppercase; margin: 16px 0 6px; padding-bottom: 4px; border-bottom: 1.5px solid #1d1b16; }
   #controls .tabs { display: flex; gap: 6px; border-bottom: 2px solid #1d1b16; margin-bottom: 4px; }
   #controls .tabs button { border-bottom: 0; border-radius: 4px 4px 0 0; padding: 8px 18px; font-size: 14px; }
+  #controls .kbtop { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; font-size: 13px; }
+  #controls .kbtop .chk { font-weight: 600; margin-left: 6px; } #controls .kbtop input { width: auto; margin-right: 6px; }
+  #kb-table td { white-space: nowrap; } #kb-table td button { min-width: 108px; } #kb-table td button.x { min-width: 0; padding: 4px 8px; margin-left: 4px; }
+  #kb-table td.cap button { background: #1d1b16; color: #efe6cf; }
   #controls .subtabs { display: flex; gap: 6px; margin: 4px 0 8px; }
   #controls .subtabs button { padding: 5px 14px; font-size: 13px; border-radius: 14px; }
   #controls .subtabs button.on { background: #1d1b16; color: #efe6cf; border-color: #1d1b16; }
@@ -110,7 +114,7 @@
 <canvas id="c"></canvas>
 <canvas id="hud"></canvas>
 <div id="fps" aria-label="Frames per second">-- FPS</div>
-<div id="build" aria-label="Build number">Build 84</div>
+<div id="build" aria-label="Build number">Build 85</div>
 <div id="ui">
   <div id="score" class="panel"></div>
   <div id="stats" class="panel"></div>
@@ -176,12 +180,13 @@
   <div id="tab-controls" role="tabpanel" hidden>
     <div class="subtabs" role="tablist"><button type="button" data-sub="kbm" class="on">Keyboard and mouse</button><button type="button" data-sub="pad">Controller</button></div>
     <div id="sub-kbm">
-    <label for="kbscheme">Scheme</label>
-    <select id="kbscheme"><option value="bf">Battlefield — the mouse flies, W / S are the throttle</option><option value="classic">Classic — the keyboard flies</option></select>
+    <div class="kbtop"><span>Start from a layout:</span><button type="button" data-layout="bf">Battlefield</button><button type="button" data-layout="classic">Classic</button>
+      <label class="chk"><input type="checkbox" id="mousefly"> Mouse steers the aircraft (click the game to capture it)</label></div>
+    <table id="kb-table"></table>
+    <p class="note" id="kb-note"></p>
     <div class="sliders"><label>Mouse sensitivity <output id="msens-out"></output><input id="msens" type="range" min="20" max="300" step="10"></label>
       <label>Mouse stick centring <output id="mcentre-out"></output><input id="mcentre" type="range" min="0" max="200" step="10"></label></div>
-    <p class="note">Battlefield scheme: click the game to capture the mouse. Moving it deflects a virtual stick (pitch and roll) that drifts back to centre; centring 0 holds wherever you leave it. Invert pitch is on the Flight tab.</p>
-    <p class="keys" id="keytext"></p>
+    <p class="note">The mouse moves a virtual stick (pitch and roll) that drifts back to centre; centring 0 holds wherever you leave it. Invert pitch is on the Flight tab. Esc, F9, Tab, M, [ ] and , . belong to the game.</p>
     <h3>Camera</h3>
     <div class="sliders"><label>Camera smoothing <output id="camease-out"></output><input id="camease" type="range" min="0" max="100" step="5"></label>
       <p class="note">Low follows the aircraft tightly; high eases in and out. Also <b>,</b> and <b>.</b> in flight.</p></div>
@@ -214,6 +219,13 @@
     <div class="foot"><button type="button" id="gfx-reset">Restore defaults</button><button type="button" id="gfx-close" class="primary">Done</button></div>
   </div>
 </div></div>
-<script type="module" src="src/main.js"></script>
+<script>   // the Controls sub-tabs work even if the game script is slow to load or cached from an older build
+document.addEventListener('click', function (e) {
+  var b = e.target.closest && e.target.closest('#tab-controls .subtabs button'); if (!b) return;
+  document.querySelectorAll('#tab-controls .subtabs button').forEach(function (x) { x.classList.toggle('on', x === b); });
+  document.getElementById('sub-kbm').hidden = b.dataset.sub !== 'kbm'; document.getElementById('sub-pad').hidden = b.dataset.sub !== 'pad';
+});
+</script>
+<script type="module" src="src/main.js?b=85"></script>
 </body>
 </html>
