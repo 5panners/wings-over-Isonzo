@@ -295,7 +295,7 @@ const KB_LAYOUTS = {
   classic: { mouseFly: false, bind: { pitchUp: ['KeyS', 'ArrowDown'], pitchDown: ['KeyW', 'ArrowUp'], rollLeft: ['KeyA', 'ArrowLeft'], rollRight: ['KeyD', 'ArrowRight'], yawLeft: ['KeyQ'], yawRight: ['KeyE'], throttleUp: ['ShiftLeft', 'ShiftRight'], throttleDown: ['ControlLeft', 'KeyC'], fire: ['Space', 'Mouse0'], rocket: ['KeyR'] } },
 };
 const KB_RESERVED = new Set(['Escape', 'F9', 'Tab', 'KeyM', 'BracketLeft', 'BracketRight', 'Comma', 'Period', 'F5', 'F11', 'F12']);        // used by the game itself
-const kb = { mouseFly: true, bind: JSON.parse(JSON.stringify(KB_LAYOUTS.bf.bind)), sens: 1, centre: 0.5, rud: 1, yawRamp: 0, x: 0, y: 0, locked: false, at: performance.now(), capture: null };
+const kb = { mouseFly: true, bind: JSON.parse(JSON.stringify(KB_LAYOUTS.bf.bind)), sens: 1.1, centre: 0.5, rud: 0.7, yawRamp: 0, x: 0, y: 0, locked: false, at: performance.now(), capture: null };
 try {
   const v = JSON.parse(localStorage.getItem('woi-kb') || '{}');
   if (v.bind) { for (const [a] of KB_ACTIONS) if (Array.isArray(v.bind[a])) kb.bind[a] = [v.bind[a][0] || null, v.bind[a][1] || null]; if (typeof v.mouseFly === 'boolean') kb.mouseFly = v.mouseFly; }
