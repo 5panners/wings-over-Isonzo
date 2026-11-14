@@ -220,3 +220,6 @@ An aircraft diving faster than 200 km/h trails coloured vapour from both wingtip
 
 ## Shooting the train and the balloons
 The train can be destroyed: any round that strikes it does damage (240 points; two rockets, about ten cannon shells or a long burst of machine-gun fire). When it goes it stops, blows up in a chain of explosions, goes dark and burns for about a minute, then the timetable brings a fresh train at its next departure. The damage and the explosion are shared with other players. The observation balloons now ride the wind, leaning and drifting downwind with their noses into it, with the cable following. Rounds that hit one burst on its surface and shove it; a rocket also sets it spinning, and it swings back afterwards.
+
+## Airship guns and gondolas
+Each airship's four gun mounts and two engine gondolas have hit boxes of their own, separate from the gas cells. A mount has 60 points (a rocket or three shells destroys it), a gondola 200. A destroyed mount stops firing and smoulders. Destroying a gondola also takes out the gun slung under it and slows the airship by 40% (it loses an engine). None of this brings the airship down on its own; that still takes burning three gas cells.

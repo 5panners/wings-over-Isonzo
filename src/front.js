@@ -11,7 +11,10 @@ import { buildGunMount } from './guns.js';
 
 export const TICKETS = 150, AIRSHIP_TICKETS = 50, BLEED_EVERY = 4;
 export const SHIP_LEN = 160, SHIP_R = 11, CELLS = 6, CELL_HP = 320;
-const L = SHIP_LEN, R = SHIP_R, LOST_CELLS = 3, SPEED = 6, SPREAD = 4;   // SPREAD: hp per second fire eats from a burning cell's neighbours
+const L = SHIP_LEN, R = SHIP_R, LOST_CELLS = 3, SPEED = 6, SPREAD = 4;
+// Each gun mount and each gondola has a hit box of its own, apart from the gas cells: a mount can be shot away, and a gondola (with the engine and the
+// gun slung under it) can be destroyed, without the airship itself going down. Hit codes for damage(): 0-5 gas cell, 100-103 gun mount, 200-201 gondola.
+const GUN_HP = 60, GOND_HP = 200, GUN_R = 2.8, GONDOLAS = [{ z: L * 0.22, half: 8, gun: 2 }, { z: -L * 0.18, half: 6, gun: 3 }];   // SPREAD: hp per second fire eats from a burning cell's neighbours
 const SIDES = ['it', 'ah'], other = s => (s === 'it' ? 'ah' : 'it');
 export const SIDE_NAME = { it: 'Italian', ah: 'Austro-Hungarian' }, NATION = { it: 'Italy', ah: 'Austria-Hungary' };
 export const TEAM_TINT = { it: '#3d8bf0', ah: '#e2463b', none: '#f2ead0' };
@@ -101,7 +104,7 @@ export function createFront(scene, fx) {
     let top = 0; for (let a = 0; a < Math.PI * 2; a += 0.05) for (const dx of [-90, 0, 90]) for (const dz of [-90, 0, 90]) top = Math.max(top, H(cfg.cx + cfg.rx * Math.cos(a) + dx, cfg.cz + cfg.rz * Math.sin(a) + dz));
     scene.add(group);
     ships[side] = { side, ...cfg, alt: Math.max(200, top + 95), theta: cfg.theta0, mesh: group, cellMats, base, auras,
-      cells: new Array(CELLS).fill(CELL_HP), burning: new Array(CELLS).fill(false), down: false, crashed: false, fall: 0, heading: 0, sink: 0,
+      gunHp: TURRETS.map(() => GUN_HP), gondHp: [GOND_HP, GOND_HP], gondDead: [false, false], cells: new Array(CELLS).fill(CELL_HP), burning: new Array(CELLS).fill(false), down: false, crashed: false, fall: 0, heading: 0, sink: 0,
       pos: new THREE.Vector3(), quat: new THREE.Quaternion(), inv: new THREE.Quaternion(), fwd: new THREE.Vector3(0, 0, 1),
       netPos: new THREE.Vector3(), netQuat: new THREE.Quaternion(), hasNet: false, lastHitBy: null, downBy: null, wreck: null,
       turrets: TURRETS.map((t, i) => ({ off: new THREE.Vector3(t[0], t[1], t[2]), up: t[3], mount: mounts[i], burstEnd: 0, nextShot: 0, err: new THREE.Vector3(), target: null, firing: false, yaw: 0, pitch: t[3] * 0.35, recoil: 0, shot: 0, flashUntil: [0, 0], lastTarget: null, lastSeen: -99 })),
@@ -121,7 +124,8 @@ export function createFront(scene, fx) {
   function resetShip(s) {
     s.theta = s.theta0; s.cells.fill(CELL_HP); s.burning.fill(false); s.down = s.crashed = false; s.fall = 0; s.sink = 0;
     s.lastHitBy = s.downBy = null; s.wreck = null; s.hasNet = false; s.mesh.visible = active;
-    for (const t of s.turrets) { t.target = null; t.firing = false; t.burstEnd = 0; }
+    for (const t of s.turrets) { t.target = null; t.firing = false; t.burstEnd = 0; t.dead = false; t.mount.root.visible = true; }
+    s.gunHp.fill(GUN_HP); s.gondHp.fill(GOND_HP); s.gondDead.fill(false);
     pose(s); s.inv.copy(s.quat).invert(); s.mesh.position.copy(s.pos); s.mesh.quaternion.copy(s.quat);
     s.seen.down = false; s.seen.hp = CELLS * CELL_HP;
   }
@@ -141,9 +145,25 @@ export function createFront(scene, fx) {
     if (s.down) return; s.down = true; s.fall = 0; s.heading = Math.atan2(s.fwd.x, s.fwd.z); s.downBy = s.lastHitBy;
     tickets[s.side] -= AIRSHIP_TICKETS;
   }
+  // a gun mount is shot away (here and, via pack/unpack, everywhere else)
+  let myTeamNow = null;
+  function setGunDead(s, i) {
+    const t = s.turrets[i]; if (!t || t.dead) return; t.dead = true; t.firing = false; t.target = null; t.mount.root.visible = false;
+    const p = local(s, t.off.x, t.off.y, t.off.z, new THREE.Vector3()); fx.explode(p);
+    for (let k = 0; k < 8; k++) { const f = fx.puff(p, k % 2 ? '#ff8a2a' : '#ffc24a', 1.2 + Math.random() * 1.5, 0.5 + Math.random() * 0.5, 4, 3); f.glow = true; }
+    fx.say(s.side === myTeamNow ? 'A gun on our airship has been destroyed' : 'Enemy airship gun destroyed');
+  }
+  function setGondolaDead(s, g) {
+    if (s.gondDead[g]) return; s.gondDead[g] = true; s.gondHp[g] = 0; setGunDead(s, GONDOLAS[g].gun);
+    const p = local(s, 0, -R - 3, GONDOLAS[g].z, new THREE.Vector3()); fx.explode(p); fx.explode(local(s, 0, -R - 2, GONDOLAS[g].z + 3, new THREE.Vector3()));
+    fx.say(s.side === myTeamNow ? 'An engine gondola on our airship is destroyed: it slows' : 'Enemy airship engine gondola destroyed: it slows');
+  }
+  const speedOf = s => SPEED * (1 - 0.4 * s.gondDead.filter(Boolean).length);                      // each gondola lost takes 40% off the cruising speed
   function damage(side, cell, amount, by) {
-    const s = ships[side]; if (!active || !s || s.down || s.crashed || !(cell >= 0 && cell < CELLS)) return;
+    const s = ships[side]; if (!active || !s || s.down || s.crashed || !(cell >= 0 && (cell < CELLS || (cell >= 100 && cell < 100 + TURRETS.length) || (cell >= 200 && cell < 200 + GONDOLAS.length)))) return;
     s.lastHitBy = by;
+    if (cell >= 200) { const g = cell - 200; if (s.gondDead[g]) return; s.gondHp[g] -= amount; if (s.gondHp[g] <= 0) setGondolaDead(s, g); return; }
+    if (cell >= 100) { const i = cell - 100; if (s.turrets[i].dead) return; s.gunHp[i] -= amount; if (s.gunHp[i] <= 0) setGunDead(s, i); return; }
     if (s.burning[cell]) {                                                     // already alight: rounds go into a neighbour
       const nb = [cell - 1, cell + 1].filter(j => j >= 0 && j < CELLS && !s.burning[j]); if (!nb.length) return;
       cell = nb[Math.floor(Math.random() * nb.length)]; amount *= 0.5;
@@ -173,6 +193,7 @@ export function createFront(scene, fx) {
     const sk = SKILL[level + 1] ?? SKILL[1];
     s.mesh.updateMatrixWorld(true);
     for (const t of s.turrets) {
+      if (t.dead) { t.firing = false; t.target = null; continue; }
       const o = local(s, t.off.x, t.off.y, t.off.z, new THREE.Vector3()), mt = t.mount;
       let tgt = null, aim = null;
       if (host) {
@@ -253,6 +274,7 @@ export function createFront(scene, fx) {
   }
 
   function update(dt, now, { host, planes, myTeam, level, frozen }) {
+    myTeamNow = myTeam;
     if (!active) return;
     for (const side of SIDES) {
       const s = ships[side];
@@ -260,7 +282,7 @@ export function createFront(scene, fx) {
       if (s.crashed) continue;
       if (host) {
         if (s.down) fallStep(s, dt);
-        else { s.theta += SPEED / Math.hypot(s.rx * Math.sin(s.theta), s.rz * Math.cos(s.theta)) * dt; pose(s); }
+        else { s.theta += speedOf(s) / Math.hypot(s.rx * Math.sin(s.theta), s.rz * Math.cos(s.theta)) * dt; pose(s); }
       } else if (s.hasNet) {
         s.pos.lerp(s.netPos, 1 - Math.exp(-4 * dt)); s.quat.slerp(s.netQuat, 1 - Math.exp(-4 * dt)); s.fwd.set(0, 0, 1).applyQuaternion(s.quat);
       }
@@ -285,6 +307,14 @@ export function createFront(scene, fx) {
           if (Math.random() < 0.6) fx.puff(p, '#2b2927', 4 + Math.random() * 4, 2.6, 6, 3);
         }
       }
+      for (let i = 0; i < TURRETS.length; i++) if (s.turrets[i].dead && !s.down && Math.random() < dt * 5) {          // shot-away mounts and gondolas smoulder
+        const t = s.turrets[i], p = local(s, t.off.x, t.off.y, t.off.z, v1); fx.puff(p, '#2b2927', 2 + Math.random() * 2, 2.2, 4, 1.5);
+        if (Math.random() < 0.35) { const f = fx.puff(p, '#ff8a2a', 1 + Math.random(), 0.5, 2.5, 1); f.glow = true; }
+      }
+      for (let g = 0; g < GONDOLAS.length; g++) if (s.gondDead[g] && !s.down && Math.random() < dt * 9) {
+        const p = local(s, (Math.random() - 0.5) * 3, -R - 2 - Math.random() * 2, GONDOLAS[g].z + (Math.random() - 0.5) * GONDOLAS[g].half, v1);
+        const f = fx.puff(p, Math.random() < 0.6 ? '#ff8a2a' : '#ffc24a', 1.6 + Math.random() * 1.8, 0.6, 3.5, 1.2); f.glow = true; if (Math.random() < 0.7) fx.puff(p, '#2b2927', 3 + Math.random() * 3, 2.6, 5, 2);
+      }
       if (!s.down && !frozen) turrets(s, now, planes, host, level, dt); else for (const t of s.turrets) t.mount.flashes.forEach(f => { f.visible = false; });
     }
     // ground point visuals and (host) capture
@@ -298,22 +328,32 @@ export function createFront(scene, fx) {
 
   // ---- bullets and collisions ----
   // which gas cell (0 tail .. 5 nose) a world point is inside, or -1; margin widens the hull for collisions
-  function cellAt(s, pt, margin) {
+  function cellAt(s, pt, margin, hullOnly = false) {
     v1.copy(pt).sub(s.pos).applyQuaternion(s.inv);
     const sf = v1.z / L + 0.5; if (sf < -margin / L || sf > 1 + margin / L) return -1;
     const cell = Math.min(CELLS - 1, Math.max(0, Math.floor(sf * CELLS))), r = radiusAt(Math.min(1, Math.max(0, sf))) + margin;
     if (v1.x * v1.x + v1.y * v1.y < r * r) return cell;
+    if (hullOnly) return -1;
     const inGondola = (zc, half) => v1.z > zc - half - margin && v1.z < zc + half + margin;
     if (Math.abs(v1.x) < 2.6 + margin && v1.y < -R + 1 && v1.y > -R - 5.5 - margin && (inGondola(L * 0.22, 8) || inGondola(-L * 0.18, 6))) return cell;
     return -1;
   }
   // a bullet that moved from a to b this frame: the enemy airship and cell it struck, or null
+  // the gun mounts and gondolas as targets in their own right: returns a hit code (100+ mount, 200+ gondola) or -1
+  function partAt(s, pt) {
+    v1.copy(pt).sub(s.pos).applyQuaternion(s.inv);
+    for (let i = 0; i < s.turrets.length; i++) { const t = s.turrets[i]; if (t.dead) continue; const dx = v1.x - t.off.x, dy = v1.y - t.off.y, dz = v1.z - t.off.z; if (dx * dx + dy * dy + dz * dz < GUN_R * GUN_R) return 100 + i; }
+    for (let g = 0; g < GONDOLAS.length; g++) if (!s.gondDead[g] && Math.abs(v1.x) < 2.6 && v1.y < -R + 1 && v1.y > -R - 5.5 && Math.abs(v1.z - GONDOLAS[g].z) < GONDOLAS[g].half) return 200 + g;
+    return -1;
+  }
   function hitTest(a, b, team) {
     if (!active) return null;
     for (const side of SIDES) {
       const s = ships[side]; if (side === team || s.crashed) continue;
       if (Math.abs(b.x - s.pos.x) > L || Math.abs(b.z - s.pos.z) > L) continue;
-      let c = cellAt(s, b, 0); if (c < 0) c = cellAt(s, v2.copy(a).add(b).multiplyScalar(0.5), 0);
+      v2.copy(a).add(b).multiplyScalar(0.5);
+      let c = partAt(s, b); if (c < 0) c = partAt(s, v2);
+      if (c < 0) c = cellAt(s, b, 0, true); if (c < 0) c = cellAt(s, v2, 0, true);
       if (c >= 0) return { side, cell: c };
     }
     return null;
@@ -359,7 +399,7 @@ export function createFront(scene, fx) {
   // ---- network (host sends, everyone else applies) ----
   function pack() {
     return {
-      s: SIDES.map(side => { const s = ships[side]; return [+s.pos.x.toFixed(1), +s.pos.y.toFixed(1), +s.pos.z.toFixed(1), +s.quat.x.toFixed(4), +s.quat.y.toFixed(4), +s.quat.z.toFixed(4), +s.quat.w.toFixed(4), s.cells.map(Math.round), s.burning.reduce((m, b, i) => m | (b ? 1 << i : 0), 0), (s.down ? 1 : 0) | (s.crashed ? 2 : 0), s.downBy || 0, s.turrets.map(t => (t.firing && t.target) || 0), +s.theta.toFixed(4), +s.heading.toFixed(4), +s.fall.toFixed(2)]; }),
+      s: SIDES.map(side => { const s = ships[side]; return [+s.pos.x.toFixed(1), +s.pos.y.toFixed(1), +s.pos.z.toFixed(1), +s.quat.x.toFixed(4), +s.quat.y.toFixed(4), +s.quat.z.toFixed(4), +s.quat.w.toFixed(4), s.cells.map(Math.round), s.burning.reduce((m, b, i) => m | (b ? 1 << i : 0), 0), (s.down ? 1 : 0) | (s.crashed ? 2 : 0), s.downBy || 0, s.turrets.map(t => (t.firing && t.target) || 0), +s.theta.toFixed(4), +s.heading.toFixed(4), +s.fall.toFixed(2), s.turrets.reduce((m, t, i) => m | (t.dead ? 1 << i : 0), 0) | (s.gondDead[0] ? 16 : 0) | (s.gondDead[1] ? 32 : 0)]; }),
       g: [+point.v.toFixed(3), point.owner || 0, point.contested ? 1 : 0], tk: [tickets.it, tickets.ah],
     };
   }
@@ -377,6 +417,8 @@ export function createFront(scene, fx) {
       s.down = !!(flags & 1); s.downBy = a[10] || null;
       if (crashed && !s.crashed) crash(s, now);
       if (Array.isArray(a[11])) s.turrets.forEach((t, i) => { t.target = a[11][i] || null; if (t.target) { t.lastTarget = t.target; t.lastSeen = now; } });
+      { const m = a[15] | 0; s.turrets.forEach((t, i) => { if (m & (1 << i)) setGunDead(s, i); else if (t.dead) { t.dead = false; t.mount.root.visible = true; s.gunHp[i] = GUN_HP; } });
+        [0, 1].forEach(g => { if (m & (16 << g)) setGondolaDead(s, g); else if (s.gondDead[g]) { s.gondDead[g] = false; s.gondHp[g] = GOND_HP; } }); }
       s.theta = +a[12] || s.theta; s.heading = +a[13] || 0; s.fall = +a[14] || 0;          // so that whoever takes over as host carries on from here
     });
     if (Array.isArray(m.g)) { point.v = +m.g[0] || 0; point.owner = m.g[1] === 'it' || m.g[1] === 'ah' ? m.g[1] : null; point.contested = !!m.g[2]; }
