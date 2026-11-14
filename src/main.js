@@ -78,12 +78,15 @@ function puff(pos, color, size, life, rise = 2, spread = 0) {
   puffs.push({ p: pos.clone().add(V2.set((Math.random() - 0.5) * spread, (Math.random() - 0.5) * spread, (Math.random() - 0.5) * spread)), c: color, s: size, life, max: life, rise, glow: false });
   return puffs[puffs.length - 1];
 }
+// a white flash across the whole screen for a big explosion near the camera (strength falls off with distance)
+let flashLevel = 0; const flashEl = document.getElementById('flash');
+function screenFlash(pos, power) { const d = camera.position.distanceTo(pos), lvl = power / (1 + (d / 260) * (d / 260)); if (lvl > 0.04) flashLevel = Math.max(flashLevel, Math.min(0.9, lvl)); }
 function explode(pos) {
   boomSound(pos.distanceTo(camera.position));
   for (let i = 0; i < 12; i++) puff(pos, ['#fff2b0', '#ffc24a', '#ff8a2a'][i % 3], 3 + Math.random() * 5, 0.45 + Math.random() * 0.6, 4, 7).glow = true;   // fireball
   for (let i = 0; i < 20; i++) puff(pos, i % 4 ? '#2d2a28' : '#55504a', 2.5 + Math.random() * 4, 1.8 + Math.random() * 2.8, 3 + Math.random() * 3, 11);       // smoke
   for (let i = 0; i < 8; i++) puff(pos, '#3a2a1c', 0.5 + Math.random() * 0.5, 0.9 + Math.random() * 0.8, -14 - Math.random() * 10, 16);                         // falling debris
-  flashLight(V2.copy(pos).setY(pos.y + 4), 3500, 0.45, 320, 2);
+  flashLight(V2.copy(pos).setY(pos.y + 4), 9000, 0.6, 560, 2, '#ffd9a0'); screenFlash(pos, 0.6);
 }
 
 // An airship hitting the ground: a huge rolling fireball, a column of black smoke, hundreds of sparks thrown up and out, and a light show
@@ -96,10 +99,10 @@ function crashBlast(pos) {
   for (let i = 0; i < 70; i++) puff(c, i % 3 ? '#ffe49a' : '#ffffff', 0.4 + Math.random() * 0.6, 0.9 + Math.random() * 1.8, 18 + Math.random() * 40, 36).glow = true;                       // sparks
   for (let i = 0; i < 16; i++) puff(c, '#3a2a1c', 0.8 + Math.random(), 1.4 + Math.random() * 1.2, -16 - Math.random() * 12, 40);                                                            // flying wreckage
   const at = c.clone();
-  flashLight(V2.copy(at).setY(at.y + 6), 9000, 0.7, 650, 3, '#ffd9a0');
-  for (const [d, k, col] of [[0.25, 5000, '#ffb060'], [0.6, 4000, '#ff9040'], [1.1, 3000, '#ff7a30']]) setTimeout(() => {
+  flashLight(V2.copy(at).setY(at.y + 6), 20000, 0.95, 1300, 3, '#ffe2b0'); screenFlash(at, 1.2);
+  for (const [d, k, col] of [[0.25, 11000, '#ffb060'], [0.6, 8000, '#ff9040'], [1.1, 6000, '#ff7a30']]) setTimeout(() => {
     for (let i = 0; i < 18; i++) puff(at, ['#fff2b0', '#ffb040'][i % 2], 0.4 + Math.random() * 0.5, 0.8 + Math.random(), 14 + Math.random() * 30, 40).glow = true;
-    flashLight(V2.copy(at).setY(at.y + 10 + Math.random() * 8).add(V3a.set((Math.random() - 0.5) * 40, 0, (Math.random() - 0.5) * 40)), k, 0.5, 520, 3, col);
+    flashLight(V2.copy(at).setY(at.y + 10 + Math.random() * 8).add(V3a.set((Math.random() - 0.5) * 40, 0, (Math.random() - 0.5) * 40)), k, 0.6, 900, 3, col); screenFlash(at, 0.55);
   }, d * 1000);
 }
 
@@ -321,6 +324,7 @@ function frame() {
     updateOthers(list);
   }
   updateEffects(dt);
+  flashLevel = Math.max(0, flashLevel - dt * 2.6); if (flashEl) flashEl.style.opacity = flashLevel.toFixed(3);
   railway.update(dt, t, sky.night);
   updateFlags(t, dt);
   updateBalloons(dt, t, BALLOONS);

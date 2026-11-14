@@ -154,7 +154,7 @@ export function createWeather(scene, { sky, camera, clouds, fx }) {
       fx.rain(cur.rain); fx.gusts(Math.min(1, cur.storm * 0.85 + cur.rain * 0.3));
       // lightning: only when the storm is well established
       const now = performance.now() / 1000;
-      if (cur.storm > 0.55) { if (now > nextStrike) { strike(); nextStrike = now + rand(2.2, 8.5) * (1.5 - 0.5 * cur.storm); } }
+      if (cur.storm > 0.55) { if (now > nextStrike) { strike(); nextStrike = now + rand(9, 26) * (1.5 - 0.5 * cur.storm); } }
       else nextStrike = Math.max(nextStrike, now + 3);
       const age = now - strikeAt, f = api.hold != null ? api.hold : age < 1.2 ? flashAt(age) * amp : 0;
       sky.flash = f;

@@ -13,6 +13,7 @@
   #score { top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 18px; align-items: baseline; font-weight: 700; font-size: 19px; white-space: nowrap; }
   #score small { font-weight: 400; font-size: 12px; opacity: .8; }
   #stats { left: 18px; bottom: 18px; min-width: 170px; }
+  #flash { position: fixed; inset: 0; background: #fff4de; opacity: 0; pointer-events: none; z-index: 6; }
   #board { display: none; left: 50%; top: 96px; transform: translateX(-50%); width: min(560px, 92vw); padding: 14px 18px; max-height: calc(100vh - 240px); overflow: hidden; }
   #board h3 { margin: 0 0 8px; font-size: 15px; text-align: center; letter-spacing: .04em; }
   #board table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
@@ -106,12 +107,13 @@
 <canvas id="c"></canvas>
 <canvas id="hud"></canvas>
 <div id="fps" aria-label="Frames per second">-- FPS</div>
-<div id="build" aria-label="Build number">Build 77</div>
+<div id="build" aria-label="Build number">Build 78</div>
 <div id="ui">
   <div id="score" class="panel"></div>
   <div id="stats" class="panel"></div>
   <div id="feed"></div>
   <div id="board" class="panel"></div>
+  <div id="flash"></div>
   <div id="front" class="panel"></div>
   <div id="msg"></div>
   <div id="netinfo"></div>
