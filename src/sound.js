@@ -16,6 +16,7 @@ export const CHANNELS = [
   { key: 'airgun', label: 'Airship heavy guns', hint: 'The firing of the heavy machine guns on the airships' },
   { key: 'cannons', label: 'Shell bursts', hint: 'Airship shells bursting, and the fallback gun sound while the recording loads' },
   { key: 'hits', label: 'Hits', hint: 'Rounds striking your aircraft, and your rounds striking home' },
+  { key: 'airboom', label: 'Airship explosion', hint: 'An airship hitting the ground and blowing up' },
   { key: 'booms', label: 'Explosions', hint: 'Crashes and aircraft blowing up' },
 ];
 const vol = Object.fromEntries(CHANNELS.map(c => [c.key, 1])), bus = {};
@@ -267,7 +268,7 @@ export function airshipBoomSound(dist) {
   if (!airBoomBuf) { boomSound(dist); return; }
   const src = ctx.createBufferSource(), lp = ctx.createBiquadFilter(), g = ctx.createGain(), v = Math.max(0.25, 1 / (1 + (dist / 700) * (dist / 700)));
   src.buffer = airBoomBuf; lp.type = 'lowpass'; lp.frequency.value = Math.max(700, 16000 - dist * 12); g.gain.value = 1.5 * v;
-  src.connect(lp); lp.connect(g); g.connect(bus.booms); src.start(ctx.currentTime + Math.min(1.5, dist / 800));
+  src.connect(lp); lp.connect(g); g.connect(bus.airboom); src.start(ctx.currentTime + Math.min(1.5, dist / 800));
 }
 export function boomSound(dist) {
   if (!ctx) return; const v = Math.max(0.12, near(dist * 0.4));
@@ -289,7 +290,8 @@ export function previewSound(key) {
   else if (key === 'thunder') { thunderSound(150, 0); later(() => thunderSound(900, 0.3), 3800); }
   else if (key === 'rockets') { pickupSound(); later(() => rocketSound(0), 900); later(() => rocketSound(60), 1500); }
   else if (key === 'hits') { hitTakenSound(); later(hitScoredSound, 350); later(hitTakenSound, 700); }
-  else if (key === 'booms') { boomSound(120); later(() => airshipBoomSound(150), 1600); }
+  else if (key === 'booms') boomSound(120);
+  else if (key === 'airboom') airshipBoomSound(150);
   else if (key === 'master') { for (let i = 0; i < 4; i++) later(() => gunSound(0, true), i * 90); later(() => cannonSound(40), 450); later(() => boomSound(120), 1100); }
   else if (key === 'wind') {
     const src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), g = ctx.createGain();
