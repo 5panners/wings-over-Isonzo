@@ -34,7 +34,7 @@ export function createTrails(scene, camera) {
         for (let i = 0; i < tr.length; i++) {
           const q = tr[i], a = tr[Math.max(0, i - 1)].p, b = tr[Math.min(tr.length - 1, i + 1)].p;
           tan.copy(b).sub(a); toCam.copy(camera.position).sub(q.p); side.crossVectors(tan, toCam).normalize();
-          const f = 1 - q.age / LIFE, w = 0.14 + 0.55 * (q.age / LIFE), alpha = Math.min(1, f * 1.4) * 0.7 * q.a, hot = Math.max(0, f - 0.6) * 1.6;      // fresh vapour is whiter
+          const f = 1 - q.age / LIFE, w = 0.07 + 0.28 * (q.age / LIFE), alpha = Math.min(1, f * 1.4) * 0.38 * q.a, hot = Math.max(0, f - 0.6) * 1.6;      // fresh vapour is whiter
           for (const sg of [-1, 1]) { pos[v * 3] = q.p.x + side.x * w * sg; pos[v * 3 + 1] = q.p.y + side.y * w * sg; pos[v * 3 + 2] = q.p.z + side.z * w * sg; const o = v * 4; col[o] = c.r + (1 - c.r) * hot; col[o + 1] = c.g + (1 - c.g) * hot; col[o + 2] = c.b + (1 - c.b) * hot; col[o + 3] = alpha; v++; }
         }
         for (let i = 0; i < tr.length - 1; i++) { const a = base + i * 2; idx[ix++] = a; idx[ix++] = a + 1; idx[ix++] = a + 2; idx[ix++] = a + 1; idx[ix++] = a + 3; idx[ix++] = a + 2; }
