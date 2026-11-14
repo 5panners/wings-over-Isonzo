@@ -226,3 +226,6 @@ Each airship's four gun mounts and two engine gondolas have hit boxes of their o
 
 ## Scoreboard
 Hold **Tab** for the scoreboard: every pilot, bots included, ranked by kills, then fewest deaths, with kills, deaths and kill/death ratio, the team score or tickets at the top and your own line highlighted. It also appears on its own when a round is won. Kills and deaths are counted from the kill messages every player receives, so everyone sees the same table.
+
+## Thunder
+Thunder uses three recorded claps (`assets/thunder1.mp3` to `thunder3.mp3`). One is picked at random for each lightning strike (never the same one twice running), pitched a little differently each time, and made quieter and duller the further away the strike is. The clap follows the flash closely: almost at once for a near strike, within about a second for a distant one. The old synthesised thunder remains only as a fallback while the recordings load.

@@ -19,7 +19,7 @@ export const WEATHER = [
   { key: 'storm', name: 'Thunderstorm', cover: 1, rain: 1, storm: 1 },
 ];
 const FADE = 0.07;                         // how fast the weather changes: about 14 seconds from one to the next
-const SOUND_SPEED = 260;                   // for thunder: units per second (lower than real so the delay is easy to notice)
+const SOUND_SPEED = 1500;                  // for thunder: units per second (the clap follows the flash closely, a near strike almost at once)
 const BOX = new THREE.Vector3(160, 110, 160), N_RAIN = 2600, FALL = 55, WIND_X = 8, WIND_Z = 4;   // wind and fall chosen so that the rain tiles seamlessly in time
 
 const STORM_GREY = new THREE.Color(0.2, 0.21, 0.25);
@@ -113,7 +113,7 @@ export function createWeather(scene, { sky, camera, clouds, fx }) {
       boltCore.visible = boltGlow.visible = true;
       fx.light(new THREE.Vector3(gx, gy + 25, gz), 2600 * amp, 0.4, 520);                   // the ground lights up where it strikes
     }
-    fx.thunder(dist, dist / SOUND_SPEED);
+    fx.thunder(dist, 0.04 + dist / SOUND_SPEED + Math.random() * 0.35);
   }
   const flashAt = age => age < 0.04 ? age / 0.04 : age < 0.1 ? 1 - (age - 0.04) / 0.06 * 0.7 : age < 0.16 ? 0.3 + (age - 0.1) / 0.06 * 0.65 : Math.exp(-(age - 0.16) * 6.5);   // a flicker: flash, dip, flash again, fade
 

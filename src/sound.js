@@ -59,6 +59,8 @@ export function startSound() {
       voices.push({ src: s, g: vg, pan, id: null, rate: 1, vol: 0 });
     }
   }).catch(() => { /* no engine sound if the file cannot be loaded */ });
+  // thunder: three recorded claps (assets/thunder1-3.mp3), one picked at random for each flash
+  for (const n of [1, 2, 3]) fetch(new URL(`../assets/thunder${n}.mp3`, import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => thunderBufs.push(buf)).catch(() => {});
   // wind: looped noise through a band-pass that opens up with speed
   const src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), wg = ctx.createGain();
   src.buffer = noise; src.loop = true; bp.type = 'bandpass'; bp.Q.value = 0.6; wg.gain.value = 0;
@@ -214,8 +216,15 @@ export function setRain(level) {
 // Storm wind, level 0..1 (called every frame).
 export function setGusts(level) { if (ctx && gustNode) gustNode.gain.setTargetAtTime(level * 0.55, ctx.currentTime, 0.6); }
 // Thunder after a delay (seconds): near strikes open with a sharp crack, every strike ends in a long rolling rumble that gets duller with distance.
+const thunderBufs = []; let lastThunder = -1;
 export function thunderSound(dist, delay = 0) {
-  if (!ctx) return; const v = Math.max(0.14, 1 / (1 + (dist / 700) * (dist / 700))), d = Math.max(0, delay);
+  if (!ctx) return;
+  if (thunderBufs.length) {                                              // a recording: never the same one twice running, pitched a little differently each time, duller and quieter the further away
+    let k; do k = Math.floor(Math.random() * thunderBufs.length); while (k === lastThunder && thunderBufs.length > 1); lastThunder = k;
+    const src = ctx.createBufferSource(), lp = ctx.createBiquadFilter(), g = ctx.createGain(), v = Math.max(0.2, 1 / (1 + (dist / 900) * (dist / 900)));
+    src.buffer = thunderBufs[k]; src.playbackRate.value = 0.9 + Math.random() * 0.2 - (dist > 600 ? 0.05 : 0); lp.type = 'lowpass'; lp.frequency.value = Math.max(900, 14000 - dist * 9); g.gain.value = 1.15 * v;
+    src.connect(lp); lp.connect(g); g.connect(bus.thunder); src.start(ctx.currentTime + Math.max(0, delay)); return;
+  } const v = Math.max(0.14, 1 / (1 + (dist / 700) * (dist / 700))), d = Math.max(0, delay);
   if (dist < 420) { burst(bus.thunder, 0.14, 'highpass', 4800, 1500, 0.9 * v, d); burst(bus.thunder, 0.4, 'lowpass', 2800, 130, 1.3 * v, d); tone(bus.thunder, 0.6, 'sine', 75, 24, 1.1 * v, d); }
   const n = 4 + Math.floor(Math.random() * 3);
   for (let i = 0; i < n; i++) burst(bus.thunder, 1.4 + Math.random() * 2, 'lowpass', 300 + Math.random() * 260 - dist * 0.12, 45, (0.62 - i * 0.07) * v * (0.6 + Math.random() * 0.6), d + 0.1 + i * 0.34 + Math.random() * 0.35);
@@ -272,3 +281,4 @@ export function previewSound(key) {
     src.start(t); src.stop(t + 2.3);
   }
 }
+export const thunderLoaded = () => thunderBufs.length;
