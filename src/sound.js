@@ -62,6 +62,8 @@ export function startSound() {
   }).catch(() => { /* no engine sound if the file cannot be loaded */ });
   // thunder: three recorded claps (assets/thunder1-3.mp3), one picked at random for each flash
   for (const n of [1, 2, 3]) fetch(new URL(`../assets/thunder${n}.mp3`, import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => thunderBufs.push(buf)).catch(() => {});
+  // the aircraft machine guns: one recorded round (assets/gun.mp3), played for every shot
+  fetch(new URL('../assets/gun.mp3', import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => { gunBuf = buf; }).catch(() => {});
   // the airship cannons: a recorded heavy machine gun (assets/airship-gun.mp3)
   fetch(new URL('../assets/airship-gun.mp3', import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => { cannonBuf = buf; }).catch(() => {});
   // wind: looped noise through a band-pass that opens up with speed
@@ -157,8 +159,15 @@ function tone(out, dur, type, f0, f1, gain, at = 0) {
   g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
   o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + 0.02);
 }
+let gunBuf = null;
 export function gunSound(dist, own) {
   if (!ctx) return; const v = own ? 1 : near(dist); if (v < 0.03) return;
+  if (gunBuf) {                                                          // the recorded round, cut short so a long burst does not pile up, varied a little, duller at a distance
+    const src = ctx.createBufferSource(), lp = ctx.createBiquadFilter(), g = ctx.createGain(), t = ctx.currentTime;
+    src.buffer = gunBuf; src.playbackRate.value = 0.92 + Math.random() * 0.16; lp.type = 'lowpass'; lp.frequency.value = own ? 18000 : Math.max(1800, 16000 - dist * 18);
+    g.gain.setValueAtTime(0.75 * v, t); g.gain.setTargetAtTime(0, t + 0.16, 0.07);
+    src.connect(lp); lp.connect(g); g.connect(bus.guns); src.start(t); src.stop(t + 0.5); return;
+  }
   burst(bus.guns, 0.07, 'bandpass', own ? 1500 : 1100, 500, 0.3 * v);
   tone(bus.guns, 0.06, 'square', own ? 150 : 120, 60, 0.14 * v);
 }
