@@ -19,7 +19,8 @@ export const CHANNELS = [
   { key: 'airboom', label: 'Airship explosion', hint: 'An airship hitting the ground and blowing up' },
   { key: 'booms', label: 'Explosions', hint: 'Crashes and aircraft blowing up' },
 ];
-const vol = Object.fromEntries(CHANNELS.map(c => [c.key, 1])), bus = {};
+const VOL_DEFAULT = { jingle: 0.1 };                                  // starting volumes that are not 100%
+const vol = Object.fromEntries(CHANNELS.map(c => [c.key, VOL_DEFAULT[c.key] ?? 1])), bus = {};
 try { const s = JSON.parse(localStorage.getItem('woi-audio') || '{}'); for (const k in vol) if (Number.isFinite(s[k])) vol[k] = Math.min(2, Math.max(0, s[k])); } catch { /* no storage */ }
 export const getVolume = key => vol[key];
 export function setVolume(key, v) {
@@ -29,7 +30,7 @@ export function setVolume(key, v) {
   if (!ctx) return;
   if (key === 'master') applyMaster(); else bus[key].gain.setTargetAtTime(vol[key], ctx.currentTime, 0.04);
 }
-export const resetVolumes = () => { for (const c of CHANNELS) setVolume(c.key, 1); };
+export const resetVolumes = () => { for (const c of CHANNELS) setVolume(c.key, VOL_DEFAULT[c.key] ?? 1); };
 const applyMaster = () => master.gain.setTargetAtTime(muted ? 0 : 0.8 * vol.master, ctx.currentTime, 0.05);
 export const busGain = key => (key === 'master' ? master : bus[key])?.gain.value;   // for tests
 try { muted = localStorage.getItem('woi-mute') === '1'; } catch { /* no storage */ }
