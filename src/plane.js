@@ -328,9 +328,9 @@ export function flyBot(p, planes, now, dt) {
   }
   if (p.dying) return fallDying(p, dt);
   const t = TYPES[p.type];
-  const L = BOT_LEVELS[botSettings.level] || BOT_LEVELS[1];
-  if (p.ai && p.ai.level !== botSettings.level) p.ai = null;            // difficulty changed: re-roll this pilot
-  const ai = p.ai ??= { level: botSettings.level, skill: L.skill[0] + Math.random() * (L.skill[1] - L.skill[0]), patrol: new THREE.Vector3(), patrolAt: 0, jink: 0, aim: new THREE.Vector3() };
+  const lvl = p.botLevel ?? botSettings.level, L = BOT_LEVELS[lvl] || BOT_LEVELS[1];      // each bot has its own skill, set by its place on the team
+  if (p.ai && p.ai.level !== lvl) p.ai = null;                          // difficulty changed: re-roll this pilot
+  const ai = p.ai ??= { level: lvl, skill: L.skill[0] + Math.random() * (L.skill[1] - L.skill[0]), patrol: new THREE.Vector3(), patrolAt: 0, jink: 0, aim: new THREE.Vector3() };
   // the mode's orders for this bot, if any: { engage: range for dogfighting, guard: { pos, r } enemies near it are
   // fair game too, leash: { pos, r } don't chase further than this from it, attack: an airship to strafe,
   // aimed(): whether the guns bear on it, goal: a point to fly to, low: a low run (less terrain clearance) }

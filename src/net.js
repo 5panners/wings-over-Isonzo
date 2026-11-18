@@ -1,6 +1,7 @@
 // Multiplayer transport. Everyone who types the same squadron password lands in the same room.
 //
-//  - Default: Trystero over public Nostr relays. The relays only pass the (password-encrypted)
+//  - Default: public WebTorrent trackers pass the WebRTC handshake (as in Forest Sniper); game traffic then flows peer-to-peer.
+//  - Alternative: Trystero over public Nostr relays. The relays only pass the (password-encrypted)
 //    WebRTC handshake; game traffic then flows peer-to-peer.
 //  - Fallback: a plain WebSocket relay (server/relay.js) given as ?relay=wss://host. All game
 //    traffic passes through it, AES-GCM encrypted with a key derived from the password.
@@ -16,9 +17,99 @@ async function roomIdFor(password) {
   return hex(await crypto.subtle.digest('SHA-256', enc.encode(APP_ID + ':room:' + password))).slice(0, 24);
 }
 
-export async function connect({ password, relay, turn }, handlers) {
+export async function connect({ password, relay, turn, via = 'trackers' }, handlers) {
   const room = await roomIdFor(password);
-  return relay ? connectRelay(relay, room, password, handlers) : connectTrystero(room, password, turn, handlers);
+  if (relay) return connectRelay(relay, room, password, handlers);
+  return via === 'nostr' ? connectTrystero(room, password, turn, handlers) : connectTrackers(password, turn, handlers);
+}
+
+// ---------- public WebTorrent trackers + WebRTC (the default, as in Forest Sniper) ----------
+// Everyone with the same password announces into the same tracker "torrent" (a hash of the password). The trackers pass WebRTC
+// offers and answers between them and nothing else; each pair of players then has its own direct, encrypted data channel, so
+// the battle is a full mesh. Offers keep going out every few seconds, so a player can join while a battle is under way.
+const TRACKERS = ['wss://tracker.openwebtorrent.com', 'wss://tracker.webtorrent.dev', 'wss://tracker.btorrent.xyz', 'wss://tracker.files.fm:7073/announce'];
+const STUN = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }];
+const randId = n => { const a = crypto.getRandomValues(new Uint8Array(n)), c = 'abcdefghijklmnopqrstuvwxyz0123456789'; let t = ''; for (const b of a) t += c[b % 36]; return t; };
+const gathered = (pc, ms) => new Promise(r => { if (pc.iceGatheringState === 'complete') return r(); const t = setTimeout(r, ms); pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') { clearTimeout(t); r(); } }); });
+async function connectTrackers(password, turn, h) {
+  if (!window.RTCPeerConnection) throw new Error('This browser cannot make peer-to-peer connections');
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-1', enc.encode(APP_ID + ':torrent:' + password)));
+  const infoHash = String.fromCharCode(...digest), me = randId(20), rtc = { iceServers: [...STUN, ...(turn || [])] };
+  const peers = new Set(), conns = new Map(), connecting = new Map(), offers = new Map(), sockets = [];
+  let dead = false, timer = 0;
+  const busy = peer => peers.has(peer) || (connecting.get(peer) || 0) > Date.now() - 15000;
+  const drop = (peer, dc) => { const c = conns.get(peer); if (!c || c.dc !== dc) return; conns.delete(peer); peers.delete(peer); try { c.pc.close(); } catch { /* gone */ } h.onLeave?.(peer); };
+  function attach(pc, dc, peer, offerer) {
+    dc.onopen = () => {
+      if (dead) return; connecting.delete(peer);
+      const ex = conns.get(peer);
+      if (ex && ex.dc !== dc) {                                        // both sides offered at once: keep the link the lower id offered, on both ends
+        if (offerer > ex.offerer) { try { pc.close(); } catch { /* */ } return; }
+        try { ex.pc.close(); } catch { /* */ }
+      }
+      conns.set(peer, { pc, dc, offerer });
+      if (!peers.has(peer)) { peers.add(peer); h.onJoin?.(peer); }
+    };
+    dc.onmessage = e => { if (conns.get(peer)?.dc !== dc) return; let m; try { m = JSON.parse(e.data); } catch { return; } h.onMessage(m, peer); };
+    dc.onclose = () => drop(peer, dc);
+    pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed' || pc.connectionState === 'closed') drop(peer, dc); };
+  }
+  const send = (w, o) => { try { if (w.readyState === 1) w.send(JSON.stringify(o)); } catch { /* closed */ } };
+  async function onTracker(w, ev) {
+    if (dead) return; let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (!m || m.info_hash !== infoHash || !m.peer_id || m.peer_id === me) return;
+    const peer = m.peer_id;
+    if (m.offer && m.offer_id) {                                       // somebody else's offer: answer it, unless we are already linked
+      if (busy(peer)) return; connecting.set(peer, Date.now());
+      const pc = new RTCPeerConnection(rtc); pc.ondatachannel = e => attach(pc, e.channel, peer, peer);
+      try { await pc.setRemoteDescription(m.offer); await pc.setLocalDescription(await pc.createAnswer()); await gathered(pc, 3000); } catch { connecting.delete(peer); try { pc.close(); } catch { /* */ } return; }
+      if (dead) return pc.close();
+      send(w, { action: 'announce', info_hash: infoHash, peer_id: me, to_peer_id: peer, offer_id: m.offer_id, answer: { type: 'answer', sdp: pc.localDescription.sdp } });
+    } else if (m.answer && m.offer_id) {                               // an answer to one of our offers
+      const o = offers.get(m.offer_id); if (!o || o.used) return; o.used = true; offers.delete(m.offer_id);
+      if (busy(peer)) { try { o.pc.close(); } catch { /* */ } return; }
+      connecting.set(peer, Date.now()); attach(o.pc, o.dc, peer, me);
+      o.pc.setRemoteDescription(m.answer).catch(() => { connecting.delete(peer); try { o.pc.close(); } catch { /* */ } });
+    }
+  }
+  async function freshOffer() {
+    const pc = new RTCPeerConnection(rtc), dc = pc.createDataChannel('g', { ordered: true }), id = randId(20);
+    await pc.setLocalDescription(await pc.createOffer()); await gathered(pc, 2500);
+    if (dead) { pc.close(); return null; }
+    const o = { id, pc, dc, at: Date.now(), used: false }; offers.set(id, o); return o;
+  }
+  async function round() {
+    if (dead) return;
+    for (const [id, o] of offers) if (Date.now() - o.at > 45000) { offers.delete(id); try { o.pc.close(); } catch { /* */ } }   // unanswered offers go stale
+    const want = peers.size >= 11 ? 0 : Math.min(4, 11 - peers.size);
+    const made = (await Promise.all(Array.from({ length: want }, () => freshOffer().catch(() => null)))).filter(Boolean);
+    for (const w of sockets) send(w, { action: 'announce', info_hash: infoHash, peer_id: me, numwant: made.length, uploaded: 0, downloaded: 0, left: 0, event: 'started',
+      offers: made.map(o => ({ offer_id: o.id, offer: { type: 'offer', sdp: o.pc.localDescription.sdp } })) });
+    timer = setTimeout(round, peers.size ? 9000 : 5000);
+  }
+  let reached = 0;
+  await new Promise(resolve => {
+    const done = setTimeout(resolve, 4000);
+    (window.WOI_TRACKERS || TRACKERS).forEach(function open(url, i) {
+      if (dead) return; let w; try { w = new WebSocket(url); } catch { return; }
+      sockets[i] = w;
+      w.onopen = () => { reached++; if (reached === 1) { clearTimeout(done); setTimeout(resolve, 300); } };
+      w.onmessage = ev => onTracker(w, ev);
+      w.onerror = () => {};
+      w.onclose = () => { if (!dead) setTimeout(() => open(url, i), 5000); };
+    });
+  });
+  if (!reached) h.onError?.('No matchmaking tracker answered yet; still trying');
+  round();
+  return {
+    id: me, peers, kind: 'p2p', get trackers() { return sockets.filter(w => w && w.readyState === 1).length; },
+    send(obj, to) {
+      if (!peers.size) return; const data = JSON.stringify(obj);
+      if (to) { const c = conns.get(to); if (c && c.dc.readyState === 'open') c.dc.send(data); return; }
+      for (const c of conns.values()) if (c.dc.readyState === 'open') { try { c.dc.send(data); } catch { /* closing */ } }
+    },
+    close() { dead = true; clearTimeout(timer); for (const w of sockets) { if (!w) continue; w.onclose = null; try { w.close(); } catch { /* */ } } for (const c of conns.values()) try { c.pc.close(); } catch { /* */ } for (const o of offers.values()) try { o.pc.close(); } catch { /* */ } },
+  };
 }
 
 // ---------- Trystero (Nostr relays + WebRTC) ----------
