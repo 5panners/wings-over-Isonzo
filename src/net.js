@@ -39,6 +39,12 @@ async function connectTrackers(password, turn, h) {
   let dead = false, timer = 0;
   const busy = peer => peers.has(peer) || (connecting.get(peer) || 0) > Date.now() - 15000;
   const drop = (peer, dc) => { const c = conns.get(peer); if (!c || c.dc !== dc) return; conns.delete(peer); peers.delete(peer); try { c.pc.close(); } catch { /* gone */ } h.onLeave?.(peer); };
+  // Two channels per link: 'g' is reliable and in order (kills, hits, settings); 'u' is unordered with no retransmission, for the
+  // stream of positions, so a lost packet is simply replaced by the next one instead of holding up everything behind it.
+  function fast(pc, du, peer) {
+    pc.__du = du;
+    du.onmessage = e => { if (conns.get(peer)?.pc !== pc) return; let m; try { m = JSON.parse(e.data); } catch { return; } h.onMessage(m, peer); };
+  }
   function attach(pc, dc, peer, offerer) {
     dc.onopen = () => {
       if (dead) return; connecting.delete(peer);
@@ -61,22 +67,22 @@ async function connectTrackers(password, turn, h) {
     const peer = m.peer_id;
     if (m.offer && m.offer_id) {                                       // somebody else's offer: answer it, unless we are already linked
       if (busy(peer)) return; connecting.set(peer, Date.now());
-      const pc = new RTCPeerConnection(rtc); pc.ondatachannel = e => attach(pc, e.channel, peer, peer);
+      const pc = new RTCPeerConnection(rtc); pc.ondatachannel = e => e.channel.label === 'u' ? fast(pc, e.channel, peer) : attach(pc, e.channel, peer, peer);
       try { await pc.setRemoteDescription(m.offer); await pc.setLocalDescription(await pc.createAnswer()); await gathered(pc, 3000); } catch { connecting.delete(peer); try { pc.close(); } catch { /* */ } return; }
       if (dead) return pc.close();
       send(w, { action: 'announce', info_hash: infoHash, peer_id: me, to_peer_id: peer, offer_id: m.offer_id, answer: { type: 'answer', sdp: pc.localDescription.sdp } });
     } else if (m.answer && m.offer_id) {                               // an answer to one of our offers
       const o = offers.get(m.offer_id); if (!o || o.used) return; o.used = true; offers.delete(m.offer_id);
       if (busy(peer)) { try { o.pc.close(); } catch { /* */ } return; }
-      connecting.set(peer, Date.now()); attach(o.pc, o.dc, peer, me);
+      connecting.set(peer, Date.now()); fast(o.pc, o.du, peer); attach(o.pc, o.dc, peer, me);
       o.pc.setRemoteDescription(m.answer).catch(() => { connecting.delete(peer); try { o.pc.close(); } catch { /* */ } });
     }
   }
   async function freshOffer() {
-    const pc = new RTCPeerConnection(rtc), dc = pc.createDataChannel('g', { ordered: true }), id = randId(20);
+    const pc = new RTCPeerConnection(rtc), dc = pc.createDataChannel('g', { ordered: true }), du = pc.createDataChannel('u', { ordered: false, maxRetransmits: 0 }), id = randId(20);
     await pc.setLocalDescription(await pc.createOffer()); await gathered(pc, 2500);
     if (dead) { pc.close(); return null; }
-    const o = { id, pc, dc, at: Date.now(), used: false }; offers.set(id, o); return o;
+    const o = { id, pc, dc, du, at: Date.now(), used: false }; offers.set(id, o); return o;
   }
   async function round() {
     if (dead) return;
@@ -102,11 +108,12 @@ async function connectTrackers(password, turn, h) {
   if (!reached) h.onError?.('No matchmaking tracker answered yet; still trying');
   round();
   return {
-    id: me, peers, kind: 'p2p', get trackers() { return sockets.filter(w => w && w.readyState === 1).length; },
-    send(obj, to) {
+    id: me, peers, kind: 'p2p', get trackers() { return sockets.filter(w => w && w.readyState === 1).length; }, get fastLinks() { let k = 0; for (const c of conns.values()) if (c.pc.__du?.readyState === 'open') k++; return k; },
+    send(obj, to, quick = false) {                                     // quick: positions and pings, over the unreliable channel when it is open
       if (!peers.size) return; const data = JSON.stringify(obj);
-      if (to) { const c = conns.get(to); if (c && c.dc.readyState === 'open') c.dc.send(data); return; }
-      for (const c of conns.values()) if (c.dc.readyState === 'open') { try { c.dc.send(data); } catch { /* closing */ } }
+      const ch = c => quick && c.pc.__du?.readyState === 'open' ? c.pc.__du : c.dc;
+      if (to) { const c = conns.get(to); if (c) { const d = ch(c); if (d.readyState === 'open') try { d.send(data); } catch { /* closing */ } } return; }
+      for (const c of conns.values()) { const d = ch(c); if (d.readyState === 'open') { try { d.send(data); } catch { /* closing */ } } }
     },
     close() { dead = true; clearTimeout(timer); for (const w of sockets) { if (!w) continue; w.onclose = null; try { w.close(); } catch { /* */ } } for (const c of conns.values()) try { c.pc.close(); } catch { /* */ } for (const o of offers.values()) try { o.pc.close(); } catch { /* */ } },
   };

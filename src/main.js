@@ -15,7 +15,7 @@ import { connect } from './net.js';
 import { startSound, updateSound, updateOthers, toggleMute, setMuted, isMuted, CHANNELS, getVolume, setVolume, resetVolumes, previewSound, rocketSound, pickupSound, setRain, setGusts, thunderSound, gunSound, cannonSound, crumpSound, captureJingle, lostJingle, boomSound, airshipBoomSound, hitTakenSound, hitScoredSound } from './sound.js';
 import { pollGamepad, updateControls, initControls, toggleControls, controlsOpen } from './gamepad.js';
 
-const MAX_PER_TEAM = 6, RESPAWN = 5, SEND_HZ = 15;
+const MAX_PER_TEAM = 6, RESPAWN = 5, SEND_HZ = 30;          // positions go out 30 times a second, straight to every other pilot
 const BOT_NAMES = { it: ['Ten. Rossi', 'Serg. Bianchi', 'Cap. Moretti', 'Ten. Ferrari', 'Serg. Conti', 'Ten. Galli'], ah: ['Lt. Huber', 'Fw. Novak', 'Hptm. Steiner', 'Lt. Horvath', 'Zgf. Bauer', 'Oblt. Kovacs'] };
 const $ = id => document.getElementById(id);
 const other = t => (t === 'it' ? 'ah' : 'it');
@@ -133,6 +133,7 @@ const score = { it: 0, ah: 0 };
 let heard = null;          // the latest settings message from a battle in progress, heard while joining
 let onRunway = true;       // start (and restart) on the runway instead of in the air; the host's choice also applies to its bots
 let scoreLimit = 10;                                       // kills that win a Dogfight (adjustable)
+const ping = new Map(); let nextPing = 0;                                 // round-trip time to each pilot, in ms
 let me = null, net = null, roundEndAt = 0, nextSend = 0, nextBotCheck = 0, running = false, oobSince = 0;
 const feed = [];
 // The host runs the bots, the clock and the objectives. It is the flying player with the lowest id: a player still on
@@ -206,8 +207,11 @@ function packState() {
   if (isHost()) { m.sc = [score.it, score.ah]; m.ro = encRoster(roster); m.d = [+sky.tod.toFixed(3), sky.rate]; m.md = mode; m.kl = scoreLimit; m.st = front.startTickets; m.wx = [weather.index, weather.auto ? 1 : 0]; m.pk = pickup.pack(); if (mode === 'front') m.f = front.pack(); }
   return m;
 }
+const rx = {};                                                             // messages received, by type (for testing)
 function onMessage(m, from) {
-  const t = now();
+  const t = now(); rx[m.t] = (rx[m.t] || 0) + 1;
+  if (m.t === 'pi') { net?.send({ t: 'po', s: m.s }, from, true); return; }
+  if (m.t === 'po') { const r = performance.now() - (+m.s || 0); if (r >= 0 && r < 10000) ping.set(from, ping.has(from) ? ping.get(from) * 0.6 + r * 0.4 : r); return; }
   if (m.t === 's') {
     flying.set(from, t);
     if (m.md && !running) heard = m;                         // settings of a battle already in progress (see start)
@@ -218,6 +222,11 @@ function onMessage(m, from) {
       if (p && p.local) { if (isHost()) continue; }             // we are the authority for our own bots
       if (!p) { p = addPlane(id, String(name).slice(0, 20), team, type, from, !!(flags & 4)); p.pos.set(x, y, z); p.quat.set(qx, qy, qz, qw); }
       const n = p.net ??= { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), fwd: new THREE.Vector3() };
+      if (n.at != null && t - n.at > 0.005 && t - n.at < 0.5) {                     // how fast it is turning, from the last two updates, so it can be carried forward between them
+        const dq = TB1.copy(n.quat).invert().premultiply(TB2.set(qx, qy, qz, qw).normalize()); if (dq.w < 0) dq.set(-dq.x, -dq.y, -dq.z, -dq.w);
+        const ang = 2 * Math.acos(Math.min(1, dq.w)), sn = Math.sqrt(Math.max(0, 1 - dq.w * dq.w)); n.spin ??= new THREE.Vector3();
+        if (sn > 1e-5 && ang < 1.5) n.spin.set(dq.x / sn, dq.y / sn, dq.z / sn).multiplyScalar(ang / (t - n.at)); else n.spin.set(0, 0, 0);
+      }
       n.pos.set(x, y, z); n.quat.set(qx, qy, qz, qw).normalize(); n.fwd.copy(Zax).applyQuaternion(n.quat); n.speed = speed; n.at = t;
       const alive = !!(flags & 1); p.dying = !!(flags & 8); p.fire = !!(flags & 16); p.smoke = !!(flags & 32);
       if (p.alive && !alive) explode(p.pos);
@@ -242,7 +251,7 @@ function onMessage(m, from) {
   else if (m.t === 'tk') railway.kill(m.idx);                                      // and it blew up
   else if (m.t === 'zx' && isHost() && mode === 'front') front.damage(m.s, m.c | 0, Math.min(+m.d || 0, 250), m.by);   // a player's rounds struck an airship
 }
-function onLeave(id) { flying.delete(id); for (const p of [...planes.values()]) if (p.owner === id && !p.local) { if (!p.isBot) say(`${label(p.id)} left`); removePlane(p); } }
+function onLeave(id) { flying.delete(id); ping.delete(id); for (const p of [...planes.values()]) if (p.owner === id && !p.local) { if (!p.isBot) say(`${label(p.id)} left`); removePlane(p); } }
 
 // ---------------- teams: each side has six places, each a player, a bot (with its own skill) or nobody ----------------
 // The host's roster is everyone's roster. A player who joins a side with no free player place takes over its last bot.
@@ -580,7 +589,8 @@ function step(t, dt) {
   // out of bounds warning
   const out = me.alive && (Math.abs(me.pos.x) > HALF_X || Math.abs(me.pos.z) > HALF);
   oobSince = out ? (oobSince || t) : 0;
-  if (net && t > nextSend) { nextSend = t + 1 / SEND_HZ; net.send(packState()); }
+  if (net && t > nextSend) { nextSend = t + 1 / (net.kind === 'p2p' ? SEND_HZ : 15); net.send(packState(), undefined, true); }
+  if (net && t > nextPing) { nextPing = t + 2; net.send({ t: 'pi', s: performance.now() }, undefined, true); }                     // measure the round trip to every pilot
 }
 let hitFlash = 0;
 // Ground crews at your own airfield: rolled out and nearly stopped, they repair and refuel quickly; still rolling,
@@ -852,7 +862,7 @@ function drawHud(t) {
     : oobSince ? 'Turn back<small>you are leaving the combat area</small>'
     : me.speed < TYPES[me.type].stall * 1.05 ? 'Stall<small>nose down, throttle up</small>' : '';
   const wxLabel = weather.cur.cover + weather.cur.rain > 0.05 ? ' · ' + WEATHER[weather.index].name.toLowerCase() : '';
-  $('netinfo').textContent = net ? `${net.kind === 'p2p' ? 'peer-to-peer' : 'relay'} · ${net.peers.size + 1} pilot${net.peers.size ? 's' : ''} online${isHost() ? ' · you host the bots' : ''} · ${sky.clock()}${wxLabel}` : 'solo flight · ' + sky.clock() + wxLabel;
+  $('netinfo').textContent = net ? `${net.kind === 'p2p' ? 'peer-to-peer' : 'relay'} · ${net.peers.size + 1} pilot${net.peers.size ? 's' : ''} online${ping.size ? ` · ping ${Math.round(Math.max(...ping.values()))} ms` : ''}${isHost() ? ' · you host the bots' : ''} · ${sky.clock()}${wxLabel}` : 'solo flight · ' + sky.clock() + wxLabel;
 }
 
 // ---------------- lobby ----------------
@@ -1020,6 +1030,6 @@ showVolumes();
 applyGfx(false);
 $('form').addEventListener('submit', e => { e.preventDefault(); if (running) applyLiveSetup(); else start(); });
 // debug handle; sim(seconds) fast-forwards the simulation without rendering (used by tests)
-window.__woi = { trails, railway, pickup, fireRocket, ROCKET, hitStats, glowCount: () => glowMesh.count, weather, shellStats, LIGHTS, front, get mode() { return mode; }, setMode, flight, shadowExtent: () => sun.shadow.camera.right, gfx, renderer, explode, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
+window.__woi = { rx, packState: () => packState(), trails, railway, pickup, fireRocket, ROCKET, hitStats, glowCount: () => glowMesh.count, weather, shellStats, LIGHTS, front, get mode() { return mode; }, setMode, flight, shadowExtent: () => sun.shadow.camera.right, gfx, renderer, explode, planes, score, isHost, camera, sky, feed, H, hit: (p, d, z) => damage(p, d, null, z), hitBy: (p, d, by, z) => damage(p, d, by, z), cameraStep: dt => updateCamera(dt), sim(sec) { for (let i = 0; i < sec * 30; i++) { clockSkew += 1 / 30; step(now(), 1 / 30); } last = now(); } };
 frame();
 if (params.get('autostart')) start();

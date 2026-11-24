@@ -404,8 +404,11 @@ export function flyBot(p, planes, now, dt) {
 // ---------- remote planes: ease toward the dead-reckoned network snapshot ----------
 export function flyRemote(p, now, dt) {
   const n = p.net; if (!n || !p.alive) return;
-  v1.copy(n.fwd).multiplyScalar(n.speed * (now - n.at)).add(n.pos);
-  if (p.pos.distanceToSquared(v1) > 120 * 120) p.pos.copy(v1); else p.pos.lerp(v1, 1 - Math.exp(-14 * dt));
-  p.quat.slerp(n.quat, 1 - Math.exp(-12 * dt));
+  // dead reckoning: carry the last report forward by the time since it arrived, along the way it was flying and turning
+  const age = Math.min(0.35, now - n.at), w = n.spin, wl = w ? w.length() : 0;
+  const q = wl > 1e-4 ? q2.setFromAxisAngle(v2.copy(w).multiplyScalar(1 / wl), wl * age).multiply(n.quat) : q2.copy(n.quat);
+  v1.copy(Z).applyQuaternion(q).add(n.fwd).normalize().multiplyScalar(n.speed * age).add(n.pos);              // average of the reported and the predicted heading
+  if (p.pos.distanceToSquared(v1) > 120 * 120) p.pos.copy(v1); else p.pos.lerp(v1, 1 - Math.exp(-20 * dt));
+  p.quat.slerp(q, 1 - Math.exp(-16 * dt));
   p.fwd.copy(Z).applyQuaternion(p.quat);
 }
