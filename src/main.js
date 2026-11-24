@@ -176,6 +176,30 @@ function announce(p, by, collidedWith, credit = true) {
   onKill(p.id, killer, collidedWith); net?.send({ t: 'k', v: p.id, by: killer, c: collidedWith });
   return killer;
 }
+// Mid-air collisions: the harm depends on how fast the two were closing. A nudge while chasing dents a wing or the tail and the two
+// bounce apart; a glancing pass at speed does real damage; a head-on meeting destroys both.
+const BUMP_FREE = 4, BUMP_FATAL = 40;                           // units per second of closing speed: below the first nothing much happens, above the second both are lost
+const velOf = (q, out) => out.copy(q.local ? q.vdir : q.fwd).multiplyScalar(q.speed);
+function collide(p, o, t) {
+  p.bumps ??= new Map(); if (t - (p.bumps.get(o.id) || -9) < 1) return;                       // one knock per pair per second
+  const rel = velOf(p, V3a).sub(velOf(o, BE)).length(), harm = rel <= BUMP_FREE ? 0 : 100 * Math.pow(Math.min(1.2, (rel - BUMP_FREE) / (BUMP_FATAL - BUMP_FREE)), 1.5);
+  const hit = q => {                                           // each owner looks after its own aircraft; the host also its bots
+    q.bumps ??= new Map(); q.bumps.set(q === p ? o.id : p.id, t);
+    const other = q === p ? o : p;
+    if (rel >= BUMP_FATAL || harm >= q.hp) { die(q, null, other.id); return; }
+    // which part struck: whichever side the other aircraft is on, else the tail (from behind) or the engine (from ahead)
+    const rp = V2.copy(other.pos).sub(q.pos).applyQuaternion(TB1.copy(q.quat).invert());
+    const where = Math.abs(rp.x) > Math.abs(rp.z) * 0.6 ? (rp.x > 0 ? 'wingL' : 'wingR') : rp.z < 0 ? 'tail' : 'eng';
+    q.lastHitBy = other.id; q.lastHitAt = now();
+    const msgs = harm >= 0.5 ? takeHit(q, harm, where, q === me ? 1 / flight.tough : 1) : [];          // a gentle touch only bumps
+    if (q === me) { hitTakenSound(); say(`Mid-air collision with ${label(other.id)}` + (msgs.length ? ': ' + msgs.join(', ') : '')); }
+    // push the two apart so they do not stay locked together
+    V2.copy(q.pos).sub(other.pos); const d = V2.length() || 1; q.pos.addScaledVector(V2, (COLLIDE_RADIUS + 0.6 - d) / d);
+    if (harm > 0) puff(q.pos, '#3a2a1c', 0.6, 0.9, -8, 2);
+    if (q.hp <= 0) goDown(q, other.id, 'Collision damage.');
+  };
+  hit(p); if (o.local && o.alive) hit(o);
+}
 function die(p, by, collidedWith) {           // destroyed outright: crash, collision, or a falling wreck reaching the ground
   if (!p.alive) return;
   if (!p.dying) {                                                 // a wreck that was already going down has been counted
@@ -498,7 +522,7 @@ function step(t, dt) {
       if (!crash) repair(p, t, dt);                               // ground crews at your own airfield
       if (crash) die(p, null, crash === 'balloon' || crash === 'airship' ? crash : undefined);
       else if (t - p.spawnedAt > 3 && !p.dying && !p.onGround) {                           // mid-air collision: each owner destroys its own aircraft
-        for (const o of planes.values()) if (o !== p && o.alive && !o.onGround && t - (o.spawnedAt || 0) > 3 && o.pos.distanceToSquared(p.pos) < COLLIDE_RADIUS * COLLIDE_RADIUS) { die(p, null, o.id); if (o.local) die(o, null, p.id); break; }
+        for (const o of planes.values()) if (o !== p && o.alive && !o.onGround && t - (o.spawnedAt || 0) > 3 && o.pos.distanceToSquared(p.pos) < COLLIDE_RADIUS * COLLIDE_RADIUS) { collide(p, o, t); break; }
       }
     } else if (t > p.respawnAt && !roundEndAt) p.spawn(t, onRunway);
     // guns: real bullets for planes we own, cosmetic tracers for everyone else
