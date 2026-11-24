@@ -277,48 +277,12 @@ export function boomSound(dist) {
   burst(bus.booms, 1.4, 'lowpass', 900, 50, 0.9 * v); tone(bus.booms, 0.5, 'sine', 90, 30, 0.5 * v);
 }
 export function hitTakenSound() { if (ctx) { tone(bus.hits, 0.09, 'triangle', 900, 260, 0.3); burst(bus.hits, 0.05, 'highpass', 2500, 1500, 0.2); } }   // rounds striking our aircraft
-export function hitScoredSound() {                                       // our rounds striking home: a sharp crack of splintering wood and fabric, and a ping
-  if (!ctx) return; burst(bus.hits, 0.07, 'bandpass', 2600, 1100, 0.75); burst(bus.hits, 0.12, 'lowpass', 900, 200, 0.5); tone(bus.hits, 0.07, 'triangle', 1500, 700, 0.32);
+// A small, quick explosion where rounds strike an aircraft: a short thump, a puff of blast falling away and a crackle on top.
+function smallBlast(v) {
+  burst(bus.hits, 0.2, 'lowpass', 2200, 140, 0.85 * v); tone(bus.hits, 0.14, 'sine', 150, 45, 0.6 * v); burst(bus.hits, 0.05, 'highpass', 3200, 2000, 0.3 * v);
 }
-export function hitNearSound(dist) {                                      // somebody else's rounds striking an aircraft, fading with distance
-  if (!ctx) return; const v = 1 / (1 + (dist / 90) * (dist / 90)); if (v < 0.04) return;
-  burst(bus.hits, 0.07, 'bandpass', 2200, 900, 0.55 * v); burst(bus.hits, 0.1, 'lowpass', 800, 200, 0.35 * v);
-}                                                // our rounds striking home
-
-// A short sample of one channel, for the volume sliders in Options.
-export function previewSound(key) {
-  if (!ctx) return;
-  const t = ctx.currentTime, later = (fn, ms) => setTimeout(fn, ms);
-  if (key === 'guns') for (let i = 0; i < 6; i++) later(() => gunSound(0, true), i * 90);
-  else if (key === 'airgun') { cannonSound(0); later(() => cannonSound(0), 850); later(() => cannonSound(60), 1700); }
-  else if (key === 'cannons') { crumpSound(20); later(() => crumpSound(60), 800); later(() => crumpSound(10), 1500); }
-  else if (key === 'jingle') { captureJingle(); later(lostJingle, 3600); }
-  else if (key === 'rain' && rainNodes) { const t = ctx.currentTime; for (const [g, a] of [[rainNodes[0], 0.3], [rainNodes[1], 0.28]]) { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(a, t + 0.7); g.gain.setValueAtTime(a, t + 2.0); g.gain.linearRampToValueAtTime(0, t + 3.0); } }
-  else if (key === 'gusts' && gustNode) { const t = ctx.currentTime; gustNode.gain.cancelScheduledValues(t); gustNode.gain.setValueAtTime(0, t); gustNode.gain.linearRampToValueAtTime(0.5, t + 1.2); gustNode.gain.setValueAtTime(0.5, t + 2.6); gustNode.gain.linearRampToValueAtTime(0, t + 4.2); }
-  else if (key === 'thunder') { thunderSound(150, 0); later(() => thunderSound(900, 0.3), 3800); }
-  else if (key === 'rockets') { pickupSound(); later(() => rocketSound(0), 900); later(() => rocketSound(60), 1500); }
-  else if (key === 'hits') { hitTakenSound(); later(hitScoredSound, 350); later(hitTakenSound, 700); }
-  else if (key === 'booms') boomSound(120);
-  else if (key === 'airboom') airshipBoomSound(150);
-  else if (key === 'master') { for (let i = 0; i < 4; i++) later(() => gunSound(0, true), i * 90); later(() => cannonSound(40), 450); later(() => boomSound(120), 1100); }
-  else if (key === 'wind') {
-    const src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), g = ctx.createGain();
-    src.buffer = noise; src.loop = true; bp.type = 'bandpass'; bp.Q.value = 0.6; bp.frequency.setValueAtTime(300, t); bp.frequency.linearRampToValueAtTime(1100, t + 1.8);
-    g.gain.setValueAtTime(0.01, t); g.gain.linearRampToValueAtTime(0.2, t + 0.5); g.gain.linearRampToValueAtTime(0, t + 1.8);
-    src.connect(bp); bp.connect(g); g.connect(bus.wind); src.start(t); src.stop(t + 1.9);
-  } else if ((key === 'engine' || key === 'flyby') && loopBuf) {
-    const src = ctx.createBufferSource(), g = ctx.createGain(), pan = key === 'flyby' && ctx.createStereoPanner ? ctx.createStereoPanner() : null;
-    src.buffer = loopBuf; src.loop = true;
-    if (key === 'engine') {                       // revs climbing as if the throttle were opened
-      src.playbackRate.setValueAtTime(0.7, t); src.playbackRate.linearRampToValueAtTime(1.3, t + 1.8);
-      g.gain.setValueAtTime(0.3, t); g.gain.linearRampToValueAtTime(0, t + 2);
-    } else {                                      // a fly-by: swells, passes at the middle with the pitch dropping, and fades
-      src.playbackRate.setValueAtTime(1.9, t); src.playbackRate.setValueAtTime(1.9, t + 0.95); src.playbackRate.linearRampToValueAtTime(0.72, t + 1.15); src.playbackRate.linearRampToValueAtTime(0.69, t + 2.2);
-      g.gain.setValueAtTime(0.02, t); g.gain.linearRampToValueAtTime(1.3, t + 1.0); g.gain.linearRampToValueAtTime(0.02, t + 2.2);
-      if (pan) { pan.pan.setValueAtTime(-0.8, t); pan.pan.linearRampToValueAtTime(0.8, t + 2.2); }
-    }
-    src.connect(g); if (pan) { g.connect(pan); pan.connect(bus[key]); } else g.connect(bus[key]);
-    src.start(t); src.stop(t + 2.3);
-  }
+export function hitScoredSound() { if (ctx) smallBlast(1); }                          // our rounds striking home
+export function hitNearSound(dist) {                                                  // somebody else's rounds striking an aircraft, fading with distance
+  if (!ctx) return; const v = 1 / (1 + (dist / 90) * (dist / 90)); if (v >= 0.04) smallBlast(0.75 * v);
 }
 export const thunderLoaded = () => thunderBufs.length;
