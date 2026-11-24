@@ -66,6 +66,8 @@ export function startSound() {
   for (const n of [1, 2, 3]) fetch(new URL(`../assets/thunder${n}.mp3`, import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => thunderBufs.push(buf)).catch(() => {});
   // an airship going up when it hits the ground (assets/airship-explode.mp3)
   fetch(new URL('../assets/airship-explode.mp3', import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => { airBoomBuf = buf; }).catch(() => {});
+  // rounds striking an aircraft: a recorded small explosion (assets/hit.mp3)
+  fetch(new URL('../assets/hit.mp3', import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => { hitBuf = buf; }).catch(() => {});
   // the aircraft machine guns: one recorded round (assets/gun.mp3), played for every shot
   fetch(new URL('../assets/gun.mp3', import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => { gunBuf = buf; }).catch(() => {});
   // the airship cannons: a recorded heavy machine gun (assets/airship-gun.mp3)
@@ -278,7 +280,13 @@ export function boomSound(dist) {
 }
 export function hitTakenSound() { if (ctx) { tone(bus.hits, 0.09, 'triangle', 900, 260, 0.3); burst(bus.hits, 0.05, 'highpass', 2500, 1500, 0.2); } }   // rounds striking our aircraft
 // A small, quick explosion where rounds strike an aircraft: a short thump, a puff of blast falling away and a crackle on top.
+let hitBuf = null;
 function smallBlast(v) {
+  if (hitBuf) {                                                          // the recording, cut short so a burst of hits stays quick, with a little pitch variation
+    const src = ctx.createBufferSource(), g = ctx.createGain(), t = ctx.currentTime;
+    src.buffer = hitBuf; src.playbackRate.value = 0.93 + Math.random() * 0.14; g.gain.setValueAtTime(1.0 * v, t); g.gain.setTargetAtTime(0, t + 0.22, 0.06);
+    src.connect(g); g.connect(bus.hits); src.start(t); src.stop(t + 0.5); return;
+  }
   burst(bus.hits, 0.2, 'lowpass', 2200, 140, 0.85 * v); tone(bus.hits, 0.14, 'sine', 150, 45, 0.6 * v); burst(bus.hits, 0.05, 'highpass', 3200, 2000, 0.3 * v);
 }
 export function hitScoredSound() { if (ctx) smallBlast(1); }                          // our rounds striking home
