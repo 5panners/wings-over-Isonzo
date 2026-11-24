@@ -12,7 +12,7 @@ import { createTrails } from './trails.js';
 import { createPickup, ROCKETS_PER_PACK } from './pickup.js';
 import { createFront, POINT, CELLS, CELL_HP, SIDE_NAME, NATION, TEAM_TINT, SHIP_LEN } from './front.js';
 import { connect } from './net.js';
-import { startSound, updateSound, updateOthers, toggleMute, setMuted, isMuted, CHANNELS, getVolume, setVolume, resetVolumes, previewSound, rocketSound, pickupSound, setRain, setGusts, thunderSound, gunSound, cannonSound, crumpSound, captureJingle, lostJingle, boomSound, airshipBoomSound, hitTakenSound, hitScoredSound } from './sound.js';
+import { startSound, updateSound, updateOthers, toggleMute, setMuted, isMuted, CHANNELS, getVolume, setVolume, resetVolumes, previewSound, rocketSound, pickupSound, setRain, setGusts, thunderSound, gunSound, cannonSound, crumpSound, captureJingle, lostJingle, boomSound, airshipBoomSound, hitTakenSound, hitScoredSound, hitNearSound } from './sound.js';
 import { pollGamepad, updateControls, initControls, toggleControls, controlsOpen } from './gamepad.js';
 
 const MAX_PER_TEAM = 6, RESPAWN = 5, SEND_HZ = 30;          // positions go out 30 times a second, straight to every other pilot
@@ -536,10 +536,15 @@ function step(t, dt) {
       muzzleLight(origin, p === me ? 1 : 0.8);
     }
     if (p.alive) {                                             // smoke, flame and fuel vapour show the damage
-      const eng = p.local ? p.dmg.eng : (p.smoke ? 0.5 : 0), k = p === me ? 0.5 : 1;   // our own trail is kept small so it does not blot out the view
-      if (eng > 0.3 && Math.random() < dt * 14) puff(p.pos, '#2a1c10', 0.45 * k, 0.9, -1.5, 0.3);                          // thin dark stream of oil
-      if (eng > 0.75 && Math.random() < dt * 14) puff(p.pos, '#2b2927', 1.0 * k, 1.5 * k, 1.5, 0.6);                      // heavy smoke
-      if (p.fire && Math.random() < dt * 22) puff(p.pos, Math.random() < 0.6 ? '#ff8a2a' : '#2b2927', 1.1 * k, 0.7 * k, 2.5, 0.9);
+      // how badly hurt: lost airframe strength (known for every aircraft) or a damaged engine (known for our own)
+      const eng = p.local ? p.dmg.eng : (p.smoke ? 0.5 : 0), d = Math.max(1 - p.hp / TYPES[p.type].hp, eng * 0.9), k = p === me ? 0.5 : 1;   // our own trail is kept small so it does not blot out the view
+      const at = V2.copy(p.pos).addScaledVector(p.fwd, -1.2);
+      if (eng > 0.3 && Math.random() < dt * 14) puff(at, '#2a1c10', 0.45 * k, 0.9, -1.5, 0.3);                                   // thin dark stream of oil
+      if (d > 0.2 && Math.random() < dt * (6 + 34 * d)) puff(at, d > 0.55 ? '#2b2927' : '#77726b', (0.5 + 1.5 * d) * k, (0.8 + 2 * d) * k, 1.2, 0.3 + 0.7 * d);   // smoke: thicker and darker the worse it gets
+      if (d > 0.45 && Math.random() < dt * (8 + 70 * (d - 0.45))) {                                                                // then flames licking back from the damage, growing
+        const f = puff(at, Math.random() < 0.55 ? '#ff8a2a' : '#ffc24a', (0.5 + 2.6 * (d - 0.45)) * k, 0.25 + 0.45 * d, 1.5, 0.3 + 0.5 * d); f.glow = true;
+      }
+      if (p.fire && Math.random() < dt * 30) { const f = puff(at, Math.random() < 0.6 ? '#ff8a2a' : '#ffd060', 1.3 * k, 0.6 * k, 2.5, 0.9); f.glow = true; if (Math.random() < 0.5) puff(at, '#2b2927', 1.6 * k, 1.8 * k, 2.5, 0.9); }   // on fire: a streaming blaze
       if (p.local && p.dmg.fuel > 0.3 && p.fuel > 0 && Math.random() < dt * 9) puff(p.pos, '#e9eef2', 0.6, 1.0, 0.5, 0.4);
     }
     p.sync(dt);
@@ -580,7 +585,8 @@ function step(t, dt) {
         if (b.real) hitBurst(BE, b.by === me?.id, t);
         if (b.real) {
           if (isHost()) front.damage(fh.side, fh.cell, b.airDmg ?? GUN.damage, b.by); else net?.send({ t: 'zx', s: fh.side, c: fh.cell, d: b.airDmg ?? GUN.damage, by: b.by }, hostId());
-          if (b.by === me?.id) { hitFlash = t + 0.12; hitScoredSound(); }
+          if (b.by !== me?.id && hit !== me) hitNearSound(b.p.distanceTo(camera.position));                  // somebody else's rounds striking an aircraft near us
+      if (b.by === me?.id) { hitFlash = t + 0.12; hitScoredSound(); }
         }
         bullets.splice(i, 1); continue;
       }

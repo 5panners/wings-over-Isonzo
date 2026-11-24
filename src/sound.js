@@ -277,7 +277,13 @@ export function boomSound(dist) {
   burst(bus.booms, 1.4, 'lowpass', 900, 50, 0.9 * v); tone(bus.booms, 0.5, 'sine', 90, 30, 0.5 * v);
 }
 export function hitTakenSound() { if (ctx) { tone(bus.hits, 0.09, 'triangle', 900, 260, 0.3); burst(bus.hits, 0.05, 'highpass', 2500, 1500, 0.2); } }   // rounds striking our aircraft
-export function hitScoredSound() { if (ctx) tone(bus.hits, 0.05, 'sine', 1700, 1300, 0.12); }                                                // our rounds striking home
+export function hitScoredSound() {                                       // our rounds striking home: a sharp crack of splintering wood and fabric, and a ping
+  if (!ctx) return; burst(bus.hits, 0.07, 'bandpass', 2600, 1100, 0.75); burst(bus.hits, 0.12, 'lowpass', 900, 200, 0.5); tone(bus.hits, 0.07, 'triangle', 1500, 700, 0.32);
+}
+export function hitNearSound(dist) {                                      // somebody else's rounds striking an aircraft, fading with distance
+  if (!ctx) return; const v = 1 / (1 + (dist / 90) * (dist / 90)); if (v < 0.04) return;
+  burst(bus.hits, 0.07, 'bandpass', 2200, 900, 0.55 * v); burst(bus.hits, 0.1, 'lowpass', 800, 200, 0.35 * v);
+}                                                // our rounds striking home
 
 // A short sample of one channel, for the volume sliders in Options.
 export function previewSound(key) {
