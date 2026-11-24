@@ -67,7 +67,7 @@ export function startSound() {
   // an airship going up when it hits the ground (assets/airship-explode.mp3)
   fetch(new URL('../assets/airship-explode.mp3', import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => { airBoomBuf = buf; }).catch(() => {});
   // rounds striking an aircraft: a recorded small explosion (assets/hit.mp3)
-  fetch(new URL('../assets/hit.mp3', import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => { hitBuf = buf; }).catch(() => {});
+  for (const f of ['hit.mp3', 'hit2.mp3']) fetch(new URL('../assets/' + f, import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => hitBufs.push(buf)).catch(() => {});
   // the aircraft machine guns: one recorded round (assets/gun.mp3), played for every shot
   fetch(new URL('../assets/gun.mp3', import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => { gunBuf = buf; }).catch(() => {});
   // the airship cannons: a recorded heavy machine gun (assets/airship-gun.mp3)
@@ -278,13 +278,14 @@ export function boomSound(dist) {
   if (!ctx) return; const v = Math.max(0.12, near(dist * 0.4));
   burst(bus.booms, 1.4, 'lowpass', 900, 50, 0.9 * v); tone(bus.booms, 0.5, 'sine', 90, 30, 0.5 * v);
 }
-export function hitTakenSound() { if (ctx) { tone(bus.hits, 0.09, 'triangle', 900, 260, 0.3); burst(bus.hits, 0.05, 'highpass', 2500, 1500, 0.2); } }   // rounds striking our aircraft
+export function hitTakenSound() { if (ctx) { if (hitBufs.length) smallBlast(1.15, true); else { tone(bus.hits, 0.09, 'triangle', 900, 260, 0.3); burst(bus.hits, 0.05, 'highpass', 2500, 1500, 0.2); } } }   // rounds striking our aircraft: the recorded blast, lower and heavier
 // A small, quick explosion where rounds strike an aircraft: a short thump, a puff of blast falling away and a crackle on top.
-let hitBuf = null;
-function smallBlast(v) {
-  if (hitBuf) {                                                          // the recording, cut short so a burst of hits stays quick, with a little pitch variation
+const hitBufs = []; let lastHit = -1;
+function smallBlast(v, heavy = false) {
+  if (hitBufs.length) {                                                          // the recording, cut short so a burst of hits stays quick, with a little pitch variation
     const src = ctx.createBufferSource(), g = ctx.createGain(), t = ctx.currentTime;
-    src.buffer = hitBuf; src.playbackRate.value = 0.93 + Math.random() * 0.14; g.gain.setValueAtTime(1.0 * v, t); g.gain.setTargetAtTime(0, t + 0.22, 0.06);
+    let k; do k = Math.floor(Math.random() * hitBufs.length); while (k === lastHit && hitBufs.length > 1 && Math.random() < 0.75); lastHit = k;          // either recording, at random
+    src.buffer = hitBufs[k]; src.playbackRate.value = heavy ? 0.8 + Math.random() * 0.12 : 0.93 + Math.random() * 0.14; g.gain.setValueAtTime(1.0 * v, t); g.gain.setTargetAtTime(0, t + 0.22, 0.06);
     src.connect(g); g.connect(bus.hits); src.start(t); src.stop(t + 0.5); return;
   }
   burst(bus.hits, 0.2, 'lowpass', 2200, 140, 0.85 * v); tone(bus.hits, 0.14, 'sine', 150, 45, 0.6 * v); burst(bus.hits, 0.05, 'highpass', 3200, 2000, 0.3 * v);
