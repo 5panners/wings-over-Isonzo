@@ -17,6 +17,7 @@ export const CHANNELS = [
   { key: 'cannons', label: 'Shell bursts', hint: 'Airship shells bursting, and the fallback gun sound while the recording loads' },
   { key: 'hits', label: 'Hits', hint: 'Rounds striking your aircraft, and your rounds striking home' },
   { key: 'airboom', label: 'Airship explosion', hint: 'An airship hitting the ground and blowing up' },
+  { key: 'dive', label: 'Falling aircraft', hint: 'The scream of an aircraft going down out of control' },
   { key: 'booms', label: 'Explosions', hint: 'Crashes and aircraft blowing up' },
 ];
 const VOL_DEFAULT = { jingle: 0.1 };                                  // starting volumes that are not 100%
@@ -68,6 +69,8 @@ export function startSound() {
   fetch(new URL('../assets/airship-explode.mp3', import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => { airBoomBuf = buf; }).catch(() => {});
   // rounds striking an aircraft: a recorded small explosion (assets/hit.mp3)
   for (const f of ['hit.mp3', 'hit2.mp3']) fetch(new URL('../assets/' + f, import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => hitBufs.push(buf)).catch(() => {});
+  // an aircraft going down (assets/plane-dive.mp3)
+  fetch(new URL('../assets/plane-dive.mp3', import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => { diveBuf = buf; }).catch(() => {});
   // the aircraft machine guns: one recorded round (assets/gun.mp3), played for every shot
   fetch(new URL('../assets/gun.mp3', import.meta.url)).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => { gunBuf = buf; }).catch(() => {});
   // the airship cannons: a recorded heavy machine gun (assets/airship-gun.mp3)
@@ -274,6 +277,14 @@ export function airshipBoomSound(dist) {
   src.buffer = airBoomBuf; lp.type = 'lowpass'; lp.frequency.value = Math.max(700, 16000 - dist * 12); g.gain.value = 1.5 * v;
   src.connect(lp); lp.connect(g); g.connect(bus.airboom); src.start(ctx.currentTime + Math.min(1.5, dist / 800));
 }
+let diveBuf = null;
+// An aircraft going down out of control: the recording, quieter and duller the further away it is.
+export function diveSound(dist) {
+  if (!ctx || !diveBuf) return; const v = Math.max(0.12, 1 / (1 + (dist / 260) * (dist / 260)));
+  const src = ctx.createBufferSource(), lp = ctx.createBiquadFilter(), g = ctx.createGain();
+  src.buffer = diveBuf; src.playbackRate.value = 0.96 + Math.random() * 0.08; lp.type = 'lowpass'; lp.frequency.value = Math.max(1500, 16000 - dist * 14); g.gain.value = 1.2 * v;
+  src.connect(lp); lp.connect(g); g.connect(bus.dive); src.start();
+}
 export function boomSound(dist) {
   if (!ctx) return; const v = Math.max(0.12, near(dist * 0.4));
   burst(bus.booms, 1.4, 'lowpass', 900, 50, 0.9 * v); tone(bus.booms, 0.5, 'sine', 90, 30, 0.5 * v);
@@ -308,6 +319,7 @@ export function previewSound(key) {
   else if (key === 'thunder') { thunderSound(150, 0); later(() => thunderSound(900, 0.3), 3800); }
   else if (key === 'rockets') { pickupSound(); later(() => rocketSound(0), 900); later(() => rocketSound(60), 1500); }
   else if (key === 'hits') { hitTakenSound(); later(hitScoredSound, 350); later(hitTakenSound, 700); }
+  else if (key === 'dive') diveSound(30);
   else if (key === 'booms') boomSound(120);
   else if (key === 'airboom') airshipBoomSound(150);
   else if (key === 'master') { for (let i = 0; i < 4; i++) later(() => gunSound(0, true), i * 90); later(() => cannonSound(40), 450); later(() => boomSound(120), 1100); }

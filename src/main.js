@@ -12,7 +12,7 @@ import { createTrails } from './trails.js';
 import { createPickup, ROCKETS_PER_PACK } from './pickup.js';
 import { createFront, POINT, CELLS, CELL_HP, SIDE_NAME, NATION, TEAM_TINT, SHIP_LEN } from './front.js';
 import { connect } from './net.js';
-import { startSound, updateSound, updateOthers, toggleMute, setMuted, isMuted, CHANNELS, getVolume, setVolume, resetVolumes, previewSound, rocketSound, pickupSound, setRain, setGusts, thunderSound, gunSound, cannonSound, crumpSound, captureJingle, lostJingle, boomSound, airshipBoomSound, hitTakenSound, hitScoredSound, hitNearSound } from './sound.js';
+import { startSound, updateSound, updateOthers, toggleMute, setMuted, isMuted, CHANNELS, getVolume, setVolume, resetVolumes, previewSound, rocketSound, pickupSound, setRain, setGusts, thunderSound, gunSound, cannonSound, crumpSound, captureJingle, lostJingle, boomSound, airshipBoomSound, hitTakenSound, hitScoredSound, hitNearSound, diveSound } from './sound.js';
 import { pollGamepad, updateControls, initControls, toggleControls, controlsOpen } from './gamepad.js';
 
 const MAX_PER_TEAM = 6, RESPAWN = 5, SEND_HZ = 30;          // positions go out 30 times a second, straight to every other pilot
@@ -535,6 +535,7 @@ function step(t, dt) {
       p.flashT = t; p.flash[side].rotation.z = Math.random() * 6.28; p.flash[side].scale.setScalar(0.4 + Math.random() * 0.3);
       muzzleLight(origin, p === me ? 1 : 0.8);
     }
+    if (p.dying && p.alive) { if (!p.diveHeard) { p.diveHeard = true; diveSound(p === me ? 0 : p.pos.distanceTo(camera.position)); } } else p.diveHeard = false;       // the scream of an aircraft going down, heard by everyone nearby
     if (p.alive) {                                             // smoke, flame and fuel vapour show the damage
       // how badly hurt: lost airframe strength (known for every aircraft) or a damaged engine (known for our own)
       const eng = p.local ? p.dmg.eng : (p.smoke ? 0.5 : 0), d = Math.max(1 - p.hp / TYPES[p.type].hp, eng * 0.9), k = p === me ? 0.5 : 1;   // our own trail is kept small so it does not blot out the view
